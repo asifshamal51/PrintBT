@@ -11,6 +11,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -19,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 class PrintPreviewActivity : ComponentActivity() {
@@ -50,6 +53,7 @@ class PrintPreviewActivity : ComponentActivity() {
     }
 }
 
+// PrintPreviewActivity.kt
 @Composable
 fun PrintPreviewScreen(
     uiState: PrinterUiState,
@@ -64,14 +68,32 @@ fun PrintPreviewScreen(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         item {
-            Text(
-                text = "Print Preview",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(bottom = 16.dp)
-            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = onBackClick,
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close ,
+                        contentDescription = "Close",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+//                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    modifier = Modifier.fillMaxWidth(),
+                    text = "Print Preview",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                )
+            }
         }
-
 
         // Print size dropdown
         item {
@@ -102,43 +124,28 @@ fun PrintPreviewScreen(
             }
         }
 
-        // Print and Back buttons
+        // Print button
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp)
             ) {
                 Button(
-                    onClick = onBackClick,
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(end = 8.dp)
+                    onClick = onPrintClick,
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = uiState.connectedDevice != null && uiState.sharedImageUri != null
                 ) {
-                    Text("Back")
-                }
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(start = 8.dp)
-                ) {
-                    Button(
-                        onClick = onPrintClick,
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = uiState.connectedDevice != null && uiState.sharedImageUri != null
-                    ) {
                     if (uiState.isPrinting) {
                         CircularProgressIndicator(
                             color = Color.White,
-                            modifier = Modifier
-                                .size(24.dp)
+                            modifier = Modifier.size(24.dp)
                         )
                     } else {
-                            Text("Print")
-                        }
+                        Text("Print")
                     }
                 }
             }
-
         }
 
         // Connection status
@@ -176,7 +183,7 @@ fun PrintPreviewScreen(
                         contentDescription = "Image to print",
                         modifier = Modifier
                             .fillMaxWidth()
-                            .wrapContentHeight() // Ensure image height is not constrained
+                            .wrapContentHeight()
                             .aspectRatio(it.width.toFloat() / it.height)
                             .padding(bottom = 16.dp)
                     )
