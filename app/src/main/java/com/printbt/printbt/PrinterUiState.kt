@@ -2,7 +2,7 @@ package com.printbt.printbt
 
 import android.bluetooth.BluetoothDevice
 import android.net.Uri
-// PrinterUiState.kt
+
 data class PrinterUiState(
     val pairedDevices: List<BluetoothDevice> = emptyList(),
     val connectionStatus: String = "No printer connected",
@@ -14,9 +14,9 @@ data class PrinterUiState(
     val showSnackbar: Boolean = false,
     val snackbarMessage: String = "",
     val isConnectionSuccess: Boolean = false,
-    val textToPrint: String = "" // New field for text input
+    val textToPrint: String = "",
+    val webpageUrl: String = "" // New field for webpage URL
 )
-
 enum class PrintSize(val widthPx: Int, val label: String) {
     A4(794, "A4"),
     RECEIPT_55MM(384, "55mm Receipt"),

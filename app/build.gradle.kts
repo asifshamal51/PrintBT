@@ -49,6 +49,7 @@ dependencies {
         exclude(mapOf("group" to "com.android.support", "module" to "support-vector-drawable"))
     }
     implementation("io.coil-kt:coil-compose:2.7.0") // For image loading in PrinterAppUI
+    implementation ("org.jsoup:jsoup:1.17.2")
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

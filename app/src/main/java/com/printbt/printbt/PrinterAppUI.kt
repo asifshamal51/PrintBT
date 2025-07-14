@@ -109,18 +109,18 @@ fun PrinterAppUI(
                 }
             }
 
-            // Bluetooth status
-            Text(
-                text = uiState.connectionStatus,
-                color = if (uiState.connectionStatus.contains("Error") ||
-                    uiState.connectionStatus.contains("failed") ||
-                    uiState.connectionStatus.contains("denied")) Color.Red else Color.Green,
-                modifier = Modifier
-                    .padding(8.dp)
-                    .fillMaxWidth()
-                    .background(Color(0xFFE0E0E0))
-                    .padding(16.dp)
-            )
+//            // Bluetooth status
+//            Text(
+//                text = uiState.connectionStatus,
+//                color = if (uiState.connectionStatus.contains("Error") ||
+//                    uiState.connectionStatus.contains("failed") ||
+//                    uiState.connectionStatus.contains("denied")) Color.Red else Color.Green,
+//                modifier = Modifier
+//                    .padding(8.dp)
+//                    .fillMaxWidth()
+//                    .background(Color(0xFFE0E0E0))
+//                    .padding(16.dp)
+//            )
 
             // Show Enable Bluetooth button only if Bluetooth is disabled
             if (!uiState.isBluetoothEnabled) {

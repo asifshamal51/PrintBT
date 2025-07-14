@@ -10,7 +10,11 @@ import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.util.Log // Import Log class
+import android.graphics.Canvas
+import android.net.Uri
+import android.util.Log
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import androidx.lifecycle.ViewModel
@@ -18,13 +22,19 @@ import androidx.lifecycle.viewModelScope
 import com.mazenrashed.printooth.Printooth
 import com.mazenrashed.printooth.data.printable.ImagePrintable
 import com.mazenrashed.printooth.data.printable.Printable
+import com.mazenrashed.printooth.data.printable.RawPrintable
+import com.mazenrashed.printooth.data.printable.TextPrintable
 import com.mazenrashed.printooth.ui.ScanningActivity
 import com.mazenrashed.printooth.utilities.Printing
 import com.mazenrashed.printooth.utilities.PrintingCallback
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.jsoup.Jsoup
+import java.io.IOException
 
 class PrinterViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(PrinterUiState())
@@ -88,7 +98,105 @@ class PrinterViewModel : ViewModel() {
         Log.d(TAG, "Text to print updated: $text")
     }
 
-    // PrinterViewModel.kt
+    // Update webpage URL in UI state
+    fun updateWebpageUrl(url: String) {
+        _uiState.value = _uiState.value.copy(webpageUrl = url)
+        Log.d(TAG, "Webpage URL updated: $url")
+    }
+
+    // Render webpage as bitmap with Chrome-like mobile rendering
+    fun printWebpageAsBitmap(context: Context, url: String, callback: (Bitmap?) -> Unit) {
+        val webView = WebView(context)
+        webView.settings.apply {
+            javaScriptEnabled = true // Enable JavaScript for dynamic content
+            useWideViewPort = true // Enable wide viewport for mobile rendering
+            loadWithOverviewMode = true // Zoom out to fit content
+            domStorageEnabled = true // Enable DOM storage for complex sites
+            databaseEnabled = true // Enable database for JavaScript-heavy sites
+            // Mimic Chrome's mobile user agent
+            userAgentString = "Mozilla/5.0 (Linux; Android 10; Pixel 4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.77 Mobile Safari/537.36"
+        }
+
+        // Set WebView dimensions to match receipt width
+        val receiptWidth = _uiState.value.selectedPrintSize.widthPx // e.g., 576 for 80mm
+        val defaultHeight = 3000 // Increased default height
+        webView.layout(0, 0, receiptWidth, defaultHeight)
+
+        // Set viewport to match receipt width
+        webView.loadUrl("javascript:(function() { var meta = document.querySelector('meta[name=viewport]'); if (meta) { meta.setAttribute('content', 'width=$receiptWidth, initial-scale=1.0'); } else { var newMeta = document.createElement('meta'); newMeta.name = 'viewport'; newMeta.content = 'width=$receiptWidth, initial-scale=1.0'; document.head.appendChild(newMeta); } })()")
+
+        webView.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView?, url: String?) {
+                Log.d(TAG, "WebView onPageFinished: $url, width=${view?.width}, contentHeight=${view?.contentHeight}")
+                // Delay to ensure rendering completes
+                view?.postDelayed({
+                    val contentHeight = view.contentHeight.takeIf { it > 0 } ?: defaultHeight
+                    if (contentHeight <= 0 || view.width <= 0) {
+                        Log.e(TAG, "Invalid WebView dimensions: width=${view.width}, height=$contentHeight")
+                        callback(null)
+                        return@postDelayed
+                    }
+                    try {
+                        // Create bitmap with receipt width and content height
+                        val bitmap = Bitmap.createBitmap(view.width, contentHeight, Bitmap.Config.ARGB_8888)
+                        val canvas = Canvas(bitmap)
+                        view.draw(canvas)
+                        Log.i(TAG, "Webpage bitmap created: width=${view.width}, height=$contentHeight")
+                        callback(bitmap)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error creating bitmap: ${e.message}")
+                        callback(null)
+                    }
+                }, 3000) // 3 seconds for complex pages
+            }
+
+            override fun onReceivedError(
+                view: WebView?,
+                errorCode: Int,
+                description: String?,
+                failingUrl: String?
+            ) {
+                Log.e(TAG, "WebView error: $description, code=$errorCode, url=$failingUrl")
+                callback(null)
+            }
+        }
+
+        // Validate URL
+        if (url.isBlank() || !url.matches(Regex("https?://.*"))) {
+            Log.e(TAG, "Invalid URL: $url")
+            callback(null)
+            return
+        }
+
+        // Add timeout to prevent hanging
+        viewModelScope.launch {
+            delay(15000) // 15-second timeout
+            if (_uiState.value.isPrinting) {
+                Log.e(TAG, "Webpage rendering timed out for URL: $url")
+                callback(null)
+            }
+        }
+
+        webView.loadUrl(url)
+        Log.d(TAG, "Loading webpage: $url")
+    }
+
+    // Fetch webpage text using Jsoup
+    private suspend fun fetchWebpageText(url: String): String {
+        return withContext(Dispatchers.IO) {
+            try {
+                val document = Jsoup.connect(url).get()
+                // Try to extract main content (adjust selector for better results)
+                val content = document.select("body").text().take(1000) // Limit to 1000 chars
+                content
+            } catch (e: IOException) {
+                Log.e(TAG, "Error fetching webpage text: ${e.message}")
+                "Error fetching webpage: ${e.message}"
+            }
+        }
+    }
+
+    // Updated printContent to exclude webpage URL in text fallback
     fun printContent(context: Context) {
         viewModelScope.launch {
             if (printing == null) {
@@ -98,14 +206,17 @@ class PrinterViewModel : ViewModel() {
                         delay(1000)
                         if (printing == null) {
                             updateConnectionStatus("No printer connected. Please connect a printer.")
+                            _uiState.value = _uiState.value.copy(isPrinting = false)
                             return@launch
                         }
                     } ?: run {
                         updateConnectionStatus("No context available for reconnection")
+                        _uiState.value = _uiState.value.copy(isPrinting = false)
                         return@launch
                     }
                 } ?: run {
                     updateConnectionStatus("No printer connected. Please connect a printer.")
+                    _uiState.value = _uiState.value.copy(isPrinting = false)
                     return@launch
                 }
             }
@@ -116,19 +227,18 @@ class PrinterViewModel : ViewModel() {
             if (_uiState.value.textToPrint.isNotBlank()) {
                 try {
                     printables.add(
-                        com.mazenrashed.printooth.data.printable.TextPrintable.Builder()
+                        TextPrintable.Builder()
                             .setText(_uiState.value.textToPrint)
-                            .setAlignment(0) // 0 for left, 1 for center, 2 for right
-                            .setFontSize(1)  // 1 for normal, 0 for small, 2 for large
+                            .setAlignment(0) // 0 for left
+                            .setFontSize(1)  // 1 for normal
                             .build()
                     )
-                    printables.add(
-                        com.mazenrashed.printooth.data.printable.RawPrintable.Builder("\n\n\n\n".toByteArray()).build() // Updated to four newlines
-                    )
+                    printables.add(RawPrintable.Builder("\n\n\n\n".toByteArray()).build())
                     Log.i(TAG, "Added text to printables: ${_uiState.value.textToPrint}")
                 } catch (e: Exception) {
                     updateConnectionStatus("Error preparing text: ${e.message}")
                     Log.e(TAG, "Error preparing text: ${e.message}")
+                    _uiState.value = _uiState.value.copy(isPrinting = false)
                     return@launch
                 }
             }
@@ -142,29 +252,114 @@ class PrinterViewModel : ViewModel() {
                     inputStream?.close()
                     val resizedBitmap = resizeBitmap(originalBitmap, _uiState.value.selectedPrintSize.widthPx)
                     printables.add(ImagePrintable.Builder(resizedBitmap).build())
-                    printables.add(com.mazenrashed.printooth.data.printable.RawPrintable.Builder("\n\n\n\n".toByteArray()).build())
+                    printables.add(RawPrintable.Builder("\n\n\n\n".toByteArray()).build())
                     Log.i(TAG, "Added image to printables")
                 } catch (e: Exception) {
-                    _uiState.value = _uiState.value.copy(isPrinting = false)
                     updateConnectionStatus("Error printing image: ${e.message}")
                     Log.e(TAG, "Error printing image: ${e.message}")
+                    _uiState.value = _uiState.value.copy(isPrinting = false)
                     return@launch
                 }
             }
 
-            if (printables.isEmpty()) {
-                updateConnectionStatus("Nothing to print")
-                Log.w(TAG, "No content (text or image) to print")
-                return@launch
-            }
+            // Add webpage content (as bitmap or text fallback)
+            if (_uiState.value.webpageUrl.isNotBlank()) {
+                try {
+                    _uiState.value = _uiState.value.copy(isPrinting = true)
+                    printWebpageAsBitmap(context, _uiState.value.webpageUrl) { bitmap ->
+                        viewModelScope.launch {
+                            if (bitmap != null) {
+                                val resizedBitmap = resizeBitmap(bitmap, _uiState.value.selectedPrintSize.widthPx)
+                                printables.add(ImagePrintable.Builder(resizedBitmap).build())
+                                printables.add(RawPrintable.Builder("\n\n\n\n".toByteArray()).build())
+                                Log.i(TAG, "Added webpage bitmap to printables")
+                            } else {
+                                // Fallback to text printing without URL
+                                Log.w(TAG, "Webpage bitmap failed, falling back to text")
+                                val webpageText = fetchWebpageText(_uiState.value.webpageUrl)
+                                if (webpageText.startsWith("Error")) {
+                                    updateConnectionStatus(webpageText)
+                                    Log.e(TAG, "Failed to fetch webpage text")
+                                } else {
+                                    printables.add(
+                                        TextPrintable.Builder()
+                                            .setText(webpageText) // Removed URL prefix
+                                            .setAlignment(0)
+                                            .setFontSize(1)
+                                            .build()
+                                    )
+                                    printables.add(RawPrintable.Builder("\n\n\n\n".toByteArray()).build())
+                                    Log.i(TAG, "Added webpage text to printables")
+                                }
+                            }
 
-            try {
-                printing?.print(printables)
-                Log.i(TAG, "Sent print job with ${printables.size} items")
-            } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(isPrinting = false)
-                updateConnectionStatus("Error printing: ${e.message}")
-                Log.e(TAG, "Error printing: ${e.message}")
+                            if (printables.isEmpty()) {
+                                _uiState.value = _uiState.value.copy(isPrinting = false)
+                                updateConnectionStatus("Nothing to print")
+                                Log.w(TAG, "No content (text, image, or webpage) to print")
+                                return@launch
+                            }
+
+                            try {
+                                printing?.print(printables)
+                                Log.i(TAG, "Sent print job with ${printables.size} items")
+                            } catch (e: Exception) {
+                                updateConnectionStatus("Error printing: ${e.message}")
+                                Log.e(TAG, "Error printing: ${e.message}")
+                            } finally {
+                                _uiState.value = _uiState.value.copy(isPrinting = false)
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    updateConnectionStatus("Error processing webpage: ${e.message}")
+                    Log.e(TAG, "Error processing webpage: ${e.message}")
+                    _uiState.value = _uiState.value.copy(isPrinting = false)
+                    return@launch
+                }
+            } else {
+                // Print text, image, or both if no webpage
+                if (printables.isEmpty()) {
+                    _uiState.value = _uiState.value.copy(isPrinting = false)
+                    updateConnectionStatus("Nothing to print")
+                    Log.w(TAG, "No content (text or image) to print")
+                    return@launch
+                }
+                try {
+                    printing?.print(printables)
+                    Log.i(TAG, "Sent print job with ${printables.size} items")
+                } catch (e: Exception) {
+                    updateConnectionStatus("Error printing: ${e.message}")
+                    Log.e(TAG, "Error printing: ${e.message}")
+                } finally {
+                    _uiState.value = _uiState.value.copy(isPrinting = false)
+                }
+            }
+        }
+    }
+
+
+    // PrinterViewModel.kt
+    fun handleIntent(intent: Intent?) {
+        when (intent?.action) {
+            Intent.ACTION_SEND -> {
+                // Handle image URI
+                val uri = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+                if (uri != null) {
+                    _uiState.value = _uiState.value.copy(sharedImageUri = uri, webpageUrl = "", textToPrint = "")
+                    Log.i(TAG, "Received shared image URI: $uri")
+                }
+                // Handle text or URL
+                val text = intent.getStringExtra(Intent.EXTRA_TEXT)
+                if (!text.isNullOrBlank()) {
+                    if (text.startsWith("http://") || text.startsWith("https://")) {
+                        _uiState.value = _uiState.value.copy(webpageUrl = text, sharedImageUri = null, textToPrint = "")
+                        Log.i(TAG, "Received shared webpage URL: $text")
+                    } else {
+                        _uiState.value = _uiState.value.copy(textToPrint = text, sharedImageUri = null, webpageUrl = "")
+                        Log.i(TAG, "Received shared text: $text")
+                    }
+                }
             }
         }
     }
@@ -420,38 +615,6 @@ class PrinterViewModel : ViewModel() {
         loadPairedDevices(context)
         Log.i(TAG, "Printer paired successfully")
     }
-
-    // PrinterViewModel.kt
-    fun handleIntent(intent: Intent?) {
-        when (intent?.action) {
-            Intent.ACTION_SEND -> {
-                // Handle image URI
-                val uri = intent.getParcelableExtra<android.net.Uri>(Intent.EXTRA_STREAM)
-                if (uri != null) {
-                    _uiState.value = _uiState.value.copy(sharedImageUri = uri)
-                    Log.i(TAG, "Received shared image URI: $uri")
-                }
-                // Handle text
-                val text = intent.getStringExtra(Intent.EXTRA_TEXT)
-                if (!text.isNullOrBlank()) {
-                    _uiState.value = _uiState.value.copy(textToPrint = text)
-                    Log.i(TAG, "Received shared text: $text")
-                }
-            }
-        }
-    }
-
-//    fun handleIntent(intent: Intent?) {
-//        if (intent?.action == Intent.ACTION_SEND) {
-//            val uri = intent.getParcelableExtra<android.net.Uri>(Intent.EXTRA_STREAM)
-//            if (uri != null) {
-//                _uiState.value = _uiState.value.copy(sharedImageUri = uri)
-//                Log.i(TAG, "Received shared image URI: $uri")
-//            } else {
-//                Log.w(TAG, "Received ACTION_SEND intent but no URI found")
-//            }
-//        }
-//    }
 
     fun refreshDevices(context: Context) {
         loadPairedDevices(context)
