@@ -48,6 +48,7 @@ class PrintPreviewActivity : ComponentActivity() {
     }
 }
 
+// PrintPreviewActivity.kt (PrintPreviewScreen composable)
 @Composable
 fun PrintPreviewScreen(
     uiState: PrinterUiState,
@@ -116,14 +117,13 @@ fun PrintPreviewScreen(
                     DropdownMenuItem(
                         text = { Text(size.label) },
                         onClick = {
-                            onPrintSizeChange(size) // Fixed the function name
+                            onPrintSizeChange(size)
                             expanded = false
                         }
                     )
                 }
             }
         }
-
 
         // Print and Back buttons
         Row(
@@ -138,14 +138,26 @@ fun PrintPreviewScreen(
             ) {
                 Text("Back")
             }
-            Button(
-                onClick = onPrintClick,
+            Box(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(start = 8.dp),
-                enabled = uiState.connectedDevice != null && uiState.sharedImageUri != null
+                    .padding(start = 8.dp)
             ) {
-                Text("Print")
+                Button(
+                    onClick = onPrintClick,
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = uiState.connectedDevice != null && uiState.sharedImageUri != null
+                ) {
+                if (uiState.isPrinting) {
+                    CircularProgressIndicator(
+                        color = Color.White,
+                        modifier = Modifier
+                            .size(24.dp)
+                    )
+                } else {
+                        Text("Print")
+                    }
+                }
             }
         }
 
@@ -163,146 +175,3 @@ fun PrintPreviewScreen(
         )
     }
 }
-
-//class PrintPreviewActivity : ComponentActivity() {
-//    private val viewModel: PrinterViewModel by viewModels()
-//
-//    override fun onCreate(savedInstanceState: Bundle?) {
-//        super.onCreate(savedInstanceState)
-//        viewModel.handleIntent(intent) // Handle shared image
-//
-//        setContent {
-//            MaterialTheme {
-//                Surface(modifier = Modifier.fillMaxSize()) {
-//                    val uiState: State<PrinterUiState> = viewModel.uiState.collectAsState()
-//                    PrintPreviewScreen(
-//                        uiState = uiState.value,
-//                        onPrintClick = { viewModel.printImage(this) },
-//                        onPrintSizeChange = { viewModel.setPrintSize(it) },
-//                        onBackClick = { finish() }
-//                    )
-//                }
-//            }
-//        }
-//    }
-//
-//    override fun onNewIntent(intent: Intent) {
-//        super.onNewIntent(intent)
-//        viewModel.handleIntent(intent)
-//    }
-//}
-//
-//@Composable
-//fun PrintPreviewScreen(
-//    uiState: PrinterUiState,
-//    onPrintClick: () -> Unit,
-//    onPrintSizeChange: (PrintSize) -> Unit,
-//    onBackClick: () -> Unit
-//) {
-//    Column(
-//        modifier = Modifier
-//            .fillMaxSize()
-//            .padding(16.dp),
-//        horizontalAlignment = Alignment.CenterHorizontally
-//    ) {
-//        Text(
-//            text = "Print Preview",
-//            style = MaterialTheme.typography.headlineSmall,
-//            fontWeight = FontWeight.Bold,
-//            modifier = Modifier.padding(bottom = 16.dp)
-//        )
-//
-//        // Image preview
-//        uiState.sharedImageUri?.let { uri ->
-//            val context = LocalContext.current
-//            val bitmap = remember(uri) {
-//                try {
-//                    val inputStream = context.contentResolver.openInputStream(uri)
-//                    val bmp = BitmapFactory.decodeStream(inputStream)
-//                    inputStream?.close()
-//                    bmp
-//                } catch (e: Exception) {
-//                    null
-//                }
-//            }
-//            bitmap?.let {
-//                Image(
-//                    bitmap = it.asImageBitmap(),
-//                    contentDescription = "Image to print",
-//                    modifier = Modifier
-//                        .fillMaxWidth()
-//                        .aspectRatio(it.width.toFloat() / it.height)
-//                        .padding(bottom = 16.dp)
-//                )
-//            }
-//        } ?: Text(
-//            text = "No image selected",
-//            color = Color.Red,
-//            modifier = Modifier.padding(bottom = 16.dp)
-//        )
-//
-//        // Print size dropdown
-//        var expanded by remember { mutableStateOf(false) }
-//        Box {
-//            OutlinedButton(
-//                onClick = { expanded = true },
-//                modifier = Modifier
-//                    .fillMaxWidth()
-//                    .padding(bottom = 16.dp)
-//            ) {
-//                Text(uiState.selectedPrintSize.label)
-//            }
-//            DropdownMenu(
-//                expanded = expanded,
-//                onDismissRequest = { expanded = false }
-//            ) {
-//                PrintSize.values().forEach { size ->
-//                    DropdownMenuItem(
-//                        text = { Text(size.label) },
-//                        onClick = {
-//                            onPrintSizeChange(size)
-//                            expanded = false
-//                        }
-//                    )
-//                }
-//            }
-//        }
-//
-//        // Print and Back buttons
-//        Row(
-//            modifier = Modifier.fillMaxWidth(),
-//            horizontalArrangement = Arrangement.SpaceBetween
-//        ) {
-//            Button(
-//                onClick = onBackClick,
-//                modifier = Modifier
-//                    .weight(1f)
-//                    .padding(end = 8.dp)
-//            ) {
-//                Text("Back")
-//            }
-//            Button(
-//                onClick = onPrintClick,
-//                modifier = Modifier
-//                    .weight(1f)
-//                    .padding(start = 8.dp),
-//                enabled = uiState.connectedDevice != null && uiState.sharedImageUri != null
-//            ) {
-//                Text("Print")
-//            }
-//        }
-//
-//        // Connection status
-//        Text(
-//            text = uiState.connectionStatus,
-//            color = if (uiState.connectionStatus.contains("Error") ||
-//                uiState.connectionStatus.contains("failed") ||
-//                uiState.connectionStatus.contains("denied")) Color.Red else Color.Green,
-//            modifier = Modifier
-//                .padding(top = 16.dp)
-//                .fillMaxWidth()
-//                .background(Color(0xFFE0E0E0))
-//                .padding(16.dp)
-//        )
-//    }
-//}

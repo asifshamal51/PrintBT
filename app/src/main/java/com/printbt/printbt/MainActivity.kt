@@ -15,6 +15,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
 import com.mazenrashed.printooth.Printooth
 import com.mazenrashed.printooth.ui.ScanningActivity
+
+
 // MainActivity.kt
 class MainActivity : ComponentActivity() {
     private val viewModel: PrinterViewModel by viewModels()
@@ -49,14 +51,6 @@ class MainActivity : ComponentActivity() {
         viewModel.setContext(this)
         viewModel.checkPermissionsAndBluetooth(this)
 
-        // Check if intent contains a shared image
-        if (intent?.action == Intent.ACTION_SEND) {
-            startActivity(Intent(this, PrintPreviewActivity::class.java).apply {
-                action = intent.action
-                putExtra(Intent.EXTRA_STREAM, intent.getParcelableExtra<android.net.Uri>(Intent.EXTRA_STREAM))
-            })
-        }
-
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
@@ -75,11 +69,74 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        if (intent.action == Intent.ACTION_SEND) {
-            startActivity(Intent(this, PrintPreviewActivity::class.java).apply {
-                action = intent.action
-                putExtra(Intent.EXTRA_STREAM, intent.getParcelableExtra<android.net.Uri>(Intent.EXTRA_STREAM))
-            })
-        }
+        // No ACTION_SEND handling needed here
     }
 }
+//// MainActivity.kt
+//class MainActivity : ComponentActivity() {
+//    private val viewModel: PrinterViewModel by viewModels()
+//
+//    internal val requestBluetoothPermission =
+//        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
+//            if (permissions.all { it.value }) {
+//                viewModel.checkBluetoothAndLoadDevices(this)
+//            } else {
+//                viewModel.updateConnectionStatus("Bluetooth permissions denied")
+//            }
+//        }
+//
+//    internal val enableBluetooth =
+//        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+//            if (result.resultCode == Activity.RESULT_OK) {
+//                viewModel.onBluetoothEnabled(this)
+//            } else {
+//                viewModel.updateConnectionStatus("Bluetooth not enabled")
+//            }
+//        }
+//
+//    internal val scanPrinter =
+//        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+//            if (result.resultCode == Activity.RESULT_OK) {
+//                viewModel.onPrinterScanned(this)
+//            }
+//        }
+//
+//    override fun onCreate(savedInstanceState: Bundle?) {
+//        super.onCreate(savedInstanceState)
+//        viewModel.setContext(this)
+//        viewModel.checkPermissionsAndBluetooth(this)
+//
+//        // Check if intent contains a shared image
+//        if (intent?.action == Intent.ACTION_SEND) {
+//            startActivity(Intent(this, PrintPreviewActivity::class.java).apply {
+//                action = intent.action
+//                putExtra(Intent.EXTRA_STREAM, intent.getParcelableExtra<android.net.Uri>(Intent.EXTRA_STREAM))
+//            })
+//        }
+//
+//        setContent {
+//            MaterialTheme {
+//                Surface(modifier = Modifier.fillMaxSize()) {
+//                    val uiState: State<PrinterUiState> = viewModel.uiState.collectAsState()
+//                    PrinterAppUI(
+//                        uiState = uiState.value,
+//                        onConnectClick = { device -> viewModel.connectToPrinter(this, device) },
+//                        onEnableBluetoothClick = { viewModel.enableBluetooth(this) },
+//                        onRefreshClick = { viewModel.refreshDevices(this) },
+//                        onDisconnectClick = { viewModel.disconnectPrinter() }
+//                    )
+//                }
+//            }
+//        }
+//    }
+//
+//    override fun onNewIntent(intent: Intent) {
+//        super.onNewIntent(intent)
+//        if (intent.action == Intent.ACTION_SEND) {
+//            startActivity(Intent(this, PrintPreviewActivity::class.java).apply {
+//                action = intent.action
+//                putExtra(Intent.EXTRA_STREAM, intent.getParcelableExtra<android.net.Uri>(Intent.EXTRA_STREAM))
+//            })
+//        }
+//    }
+//}

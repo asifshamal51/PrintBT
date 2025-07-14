@@ -9,7 +9,8 @@ data class PrinterUiState(
     val isBluetoothEnabled: Boolean = false,
     val sharedImageUri: Uri? = null,
     val connectedDevice: BluetoothDevice? = null,
-    val selectedPrintSize: PrintSize = PrintSize.RECEIPT_80MM
+    val selectedPrintSize: PrintSize = PrintSize.RECEIPT_80MM,
+    val isPrinting: Boolean = false
 )
 
 enum class PrintSize(val widthPx: Int, val label: String) {
