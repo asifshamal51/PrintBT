@@ -121,20 +121,19 @@ fun PrintPreviewScreen(
                         .weight(1f)
                         .padding(start = 8.dp)
                 ) {
+                    Button(
+                        onClick = onPrintClick,
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = uiState.connectedDevice != null && uiState.sharedImageUri != null
+                    ) {
                     if (uiState.isPrinting) {
                         CircularProgressIndicator(
+                            color = Color.White,
                             modifier = Modifier
-                                .size(36.dp)
-                                .align(Alignment.Center)
+                                .size(24.dp)
                         )
                     } else {
-                        Button(
-                            onClick = onPrintClick,
-                            modifier = Modifier.fillMaxWidth(),
-                            enabled = uiState.connectedDevice != null && uiState.sharedImageUri != null
-                        ) {
                             Text("Print")
-
                         }
                     }
                 }
