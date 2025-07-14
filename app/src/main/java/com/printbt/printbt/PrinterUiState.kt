@@ -1,6 +1,7 @@
 package com.printbt.printbt
 
 import android.bluetooth.BluetoothDevice
+import android.graphics.Bitmap
 import android.net.Uri
 
 data class PrinterUiState(
@@ -15,8 +16,10 @@ data class PrinterUiState(
     val snackbarMessage: String = "",
     val isConnectionSuccess: Boolean = false,
     val textToPrint: String = "",
-    val webpageUrl: String = "" // New field for webpage URL
+    val webpageUrl: String = "",
+    val printBitmaps: List<Bitmap> = emptyList()
 )
+
 enum class PrintSize(val widthPx: Int, val label: String) {
     A4(794, "A4"),
     RECEIPT_55MM(384, "55mm Receipt"),

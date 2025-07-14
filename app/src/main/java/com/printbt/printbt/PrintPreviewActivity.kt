@@ -12,6 +12,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items // Correct import for items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
@@ -19,7 +20,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap // Correct import for asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -40,7 +41,7 @@ class PrintPreviewActivity : ComponentActivity() {
                     val uiState: State<PrinterUiState> = viewModel.uiState.collectAsState()
                     PrintPreviewScreen(
                         uiState = uiState.value,
-                        onPrintClick = { viewModel.printContent(this@PrintPreviewActivity) }, // Updated to printContent
+                        onPrintClick = { viewModel.printContent(this@PrintPreviewActivity) },
                         onPrintSizeChange = { viewModel.setPrintSize(it) },
                         onBackClick = { finish() }
                     )
@@ -55,7 +56,6 @@ class PrintPreviewActivity : ComponentActivity() {
     }
 }
 
-// PrintPreviewScreen.kt
 @Composable
 fun PrintPreviewScreen(
     uiState: PrinterUiState,
@@ -76,7 +76,6 @@ fun PrintPreviewScreen(
             .fillMaxSize()
             .padding(16.dp)
     ) {
-        // Header with Close button and title
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -102,15 +101,28 @@ fun PrintPreviewScreen(
             )
         }
 
-        // Scrollable content
         LazyColumn(
             modifier = Modifier
-                .weight(1f) // Takes available space, leaving room for buttons
+                .weight(1f)
                 .fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // Show print job bitmaps if present
+            if (uiState.printBitmaps.isNotEmpty()) {
+                items(uiState.printBitmaps) { bitmap -> // Use correct items function
+                    Image(
+                        bitmap = bitmap.asImageBitmap(), // Correct method with proper import
+                        contentDescription = "Print job page",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .wrapContentHeight()
+                            .aspectRatio(bitmap.width.toFloat() / bitmap.height)
+                            .padding(bottom = 16.dp)
+                    )
+                }
+            }
             // Show URL input and WebView only if webpage is shared
-            if (uiState.webpageUrl.isNotBlank() && uiState.sharedImageUri == null && uiState.textToPrint.isBlank()) {
+            else if (uiState.webpageUrl.isNotBlank() && uiState.sharedImageUri == null && uiState.textToPrint.isBlank()) {
                 item {
                     OutlinedTextField(
                         value = webpageUrl,
@@ -144,9 +156,8 @@ fun PrintPreviewScreen(
                     )
                 }
             }
-
             // Show text input only if plain text is shared
-            if (uiState.textToPrint.isNotBlank() && uiState.sharedImageUri == null && uiState.webpageUrl.isBlank()) {
+            else if (uiState.textToPrint.isNotBlank() && uiState.sharedImageUri == null && uiState.webpageUrl.isBlank()) {
                 item {
                     OutlinedTextField(
                         value = textInput,
@@ -162,7 +173,6 @@ fun PrintPreviewScreen(
                     )
                 }
             }
-
             // Show image preview only if image is shared
             uiState.sharedImageUri?.let { uri ->
                 if (uiState.webpageUrl.isBlank() && uiState.textToPrint.isBlank()) {
@@ -197,13 +207,11 @@ fun PrintPreviewScreen(
             }
         }
 
-        // Fixed button section
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 16.dp)
         ) {
-            // Print size dropdown
             var expanded by remember { mutableStateOf(false) }
             Box(
                 modifier = Modifier
@@ -232,7 +240,6 @@ fun PrintPreviewScreen(
                 }
             }
 
-            // Print button
             Button(
                 onClick = {
                     if (!uiState.isPrinting) {
@@ -241,7 +248,7 @@ fun PrintPreviewScreen(
                 },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = uiState.connectedDevice != null &&
-                        (uiState.sharedImageUri != null || uiState.textToPrint.isNotBlank() || uiState.webpageUrl.isNotBlank())
+                        (uiState.sharedImageUri != null || uiState.textToPrint.isNotBlank() || uiState.webpageUrl.isNotBlank() || uiState.printBitmaps.isNotEmpty())
             ) {
                 if (uiState.isPrinting) {
                     CircularProgressIndicator(
@@ -254,7 +261,6 @@ fun PrintPreviewScreen(
             }
         }
 
-        // Connection status
         Text(
             text = uiState.connectionStatus,
             color = if (uiState.connectionStatus.contains("Error") ||
