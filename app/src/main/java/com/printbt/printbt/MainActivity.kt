@@ -59,7 +59,9 @@ class MainActivity : ComponentActivity() {
                         onConnectClick = { device -> viewModel.connectToPrinter(this, device) },
                         onPrintClick = { viewModel.printImage(this) },
                         onEnableBluetoothClick = { viewModel.enableBluetooth(this) },
-                        onScanClick = { viewModel.scanForPrinters(this) }
+                        onRefreshClick = { viewModel.refreshDevices(this)},
+                        onDisconnectClick = { viewModel.disconnectPrinter() } // Add disconnect callback
+
                     )
                 }
             }

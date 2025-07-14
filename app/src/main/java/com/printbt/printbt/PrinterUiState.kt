@@ -7,5 +7,6 @@ data class PrinterUiState(
     val pairedDevices: List<BluetoothDevice> = emptyList(),
     val connectionStatus: String = "No printer connected",
     val isBluetoothEnabled: Boolean = false,
-    val sharedImageUri: Uri? = null
+    val sharedImageUri: Uri? = null,
+    val connectedDevice: BluetoothDevice? = null // Add this
 )

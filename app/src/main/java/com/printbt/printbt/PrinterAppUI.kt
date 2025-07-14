@@ -23,7 +23,8 @@ fun PrinterAppUI(
     onConnectClick: (android.bluetooth.BluetoothDevice) -> Unit,
     onPrintClick: () -> Unit,
     onEnableBluetoothClick: () -> Unit,
-    onScanClick: () -> Unit
+    onRefreshClick: () -> Unit,
+    onDisconnectClick: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -37,6 +38,36 @@ fun PrinterAppUI(
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(bottom = 16.dp)
         )
+
+
+        // Show connected printer
+        uiState.connectedDevice?.let { device ->
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Connected: ${device.name ?: "Unknown Device"}",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                    Button(
+                        onClick = onDisconnectClick,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                    ) {
+                        Text("Disconnect")
+                    }
+                }
+            }
+        }
 
         // Display shared image preview
         uiState.sharedImageUri?.let { uri ->
@@ -69,10 +100,12 @@ fun PrinterAppUI(
             }
         }
 
-        // Bluetooth status and controls
+        // Bluetooth status
         Text(
             text = uiState.connectionStatus,
-            color = if (uiState.connectionStatus.contains("Error") || uiState.connectionStatus.contains("failed") || uiState.connectionStatus.contains("denied")) Color.Red else Color.Green,
+            color = if (uiState.connectionStatus.contains("Error") ||
+                uiState.connectionStatus.contains("failed") ||
+                uiState.connectionStatus.contains("denied")) Color.Red else Color.Green,
             modifier = Modifier
                 .padding(8.dp)
                 .fillMaxWidth()
@@ -80,22 +113,26 @@ fun PrinterAppUI(
                 .padding(16.dp)
         )
 
-        Button(
-            onClick = onEnableBluetoothClick,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 8.dp)
-        ) {
-            Text("Enable Bluetooth")
+        // Show Enable Bluetooth button only if Bluetooth is disabled
+        if (!uiState.isBluetoothEnabled) {
+            Button(
+                onClick = onEnableBluetoothClick,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp)
+            ) {
+                Text("Enable Bluetooth")
+            }
         }
 
+        // Refresh button
         Button(
-            onClick = onScanClick,
+            onClick = onRefreshClick,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 8.dp)
         ) {
-            Text("Scan for Printers")
+            Text("Refresh")
         }
 
         // List of paired devices
@@ -132,9 +169,15 @@ fun PrinterAppUI(
                             )
                             Button(
                                 onClick = { onConnectClick(device) },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6200EE))
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (uiState.connectedDevice == device)
+                                        Color.Green else Color(0xFF6200EE)
+                                ),
+                                enabled = uiState.connectedDevice != device
                             ) {
-                                Text("Connect")
+                                Text(
+                                    if (uiState.connectedDevice == device) "Connected" else "Connect"
+                                )
                             }
                         }
                     }

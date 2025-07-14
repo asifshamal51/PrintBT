@@ -21,19 +21,41 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 class PrinterViewModel : ViewModel() {
+
+
     private val _uiState = MutableStateFlow(PrinterUiState())
     val uiState: StateFlow<PrinterUiState> = _uiState
 
     private var printing: Printing? = null
 
+    // PrinterViewModel.kt
+    @SuppressLint("MissingPermission")
     fun setContext(context: MainActivity) {
         Printooth.init(context)
-        // Do not initialize printing here; defer to connectToPrinter
-        setupPrintingCallback()
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            updateConnectionStatus("Bluetooth permission denied")
+            return
+        }
+        try {
+            if (Printooth.hasPairedPrinter()) {
+                printing = Printooth.printer()
+                setupPrintingCallback()
+                val pairedPrinter = Printooth.getPairedPrinter()
+                val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
+                val device = pairedPrinter?.address?.let { address ->
+                    bluetoothAdapter.getRemoteDevice(address)
+                }
+                _uiState.value = _uiState.value.copy(
+                    connectionStatus = "Connected to ${pairedPrinter?.name ?: "Unknown Device"}",
+                    connectedDevice = device
+                )
+            }
+        } catch (e: SecurityException) {
+            updateConnectionStatus("Bluetooth permission error: ${e.message}")
+        }
     }
 
     private fun setupPrintingCallback() {
-        // Set callback only when printing is initialized
         printing?.printingCallback = object : PrintingCallback {
             override fun connectingWithPrinter() {
                 updateConnectionStatus("Connecting to printer...")
@@ -41,10 +63,15 @@ class PrinterViewModel : ViewModel() {
 
             override fun connectionFailed(error: String) {
                 updateConnectionStatus("Connection failed: $error")
+                _uiState.value = _uiState.value.copy(connectedDevice = null)
             }
 
             override fun disconnected() {
-                updateConnectionStatus("Printer disconnected")
+                _uiState.value = _uiState.value.copy(
+                    connectionStatus = "Printer disconnected",
+                    connectedDevice = null
+                )
+                printing = null // Clear the printing instance
             }
 
             override fun onError(error: String) {
@@ -61,10 +88,64 @@ class PrinterViewModel : ViewModel() {
         }
     }
 
-    fun handleIntent(intent: Intent?) {
-        if (intent?.action == Intent.ACTION_SEND && intent.type?.startsWith("image/") == true) {
-            val uri = intent.getParcelableExtra<android.net.Uri>(Intent.EXTRA_STREAM)
-            _uiState.value = _uiState.value.copy(sharedImageUri = uri)
+    @SuppressLint("MissingPermission")
+    fun connectToPrinter(context: MainActivity, device: BluetoothDevice) {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            updateConnectionStatus("Bluetooth permission denied")
+            return
+        }
+
+        try {
+            if (printing != null && _uiState.value.connectedDevice == device) {
+                updateConnectionStatus("Already connected to ${device.name}")
+                return
+            }
+            Printooth.setPrinter(device.name, device.address)
+            printing = Printooth.printer()
+            setupPrintingCallback()
+            _uiState.value = _uiState.value.copy(
+                connectionStatus = "Connected to ${device.name}",
+                connectedDevice = device
+            )
+        } catch (e: SecurityException) {
+            updateConnectionStatus("Bluetooth permission error: ${e.message}")
+        }
+    }
+
+    fun disconnectPrinter() {
+        printing?.let {
+            Printooth.removeCurrentPrinter()
+            printing = null
+            _uiState.value = _uiState.value.copy(
+                connectionStatus = "Printer disconnected",
+                connectedDevice = null
+            )
+        } ?: run {
+            updateConnectionStatus("No printer connected")
+        }
+    }
+
+    fun printImage(context: MainActivity) {
+        viewModelScope.launch {
+            if (printing == null) {
+                updateConnectionStatus("No printer connected. Please connect a printer.")
+                return@launch
+            }
+            _uiState.value.sharedImageUri?.let { uri ->
+                try {
+                    val inputStream = context.contentResolver.openInputStream(uri)
+                    val bitmap = BitmapFactory.decodeStream(inputStream)
+                    inputStream?.close()
+                    val printables = ArrayList<Printable>().apply {
+                        add(ImagePrintable.Builder(bitmap).build())
+                    }
+                    printing?.print(printables) // Reuse existing printing instance
+                } catch (e: Exception) {
+                    updateConnectionStatus("Error printing image: ${e.message}")
+                }
+            } ?: run {
+                updateConnectionStatus("No image to print")
+            }
         }
     }
 
@@ -130,46 +211,6 @@ class PrinterViewModel : ViewModel() {
         }
     }
 
-    @SuppressLint("MissingPermission")
-    fun connectToPrinter(context: MainActivity, device: BluetoothDevice) {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
-            updateConnectionStatus("Bluetooth permission denied")
-            return
-        }
-
-        try {
-            Printooth.setPrinter(device.name, device.address)
-            printing = Printooth.printer() // Initialize printing here
-            setupPrintingCallback() // Re-attach callback after initializing printing
-            updateConnectionStatus("Connected to ${device.name}")
-        } catch (e: SecurityException) {
-            updateConnectionStatus("Bluetooth permission error: ${e.message}")
-        }
-    }
-
-    fun printImage(context: MainActivity) {
-        viewModelScope.launch {
-            if (printing == null) {
-                updateConnectionStatus("No printer connected. Please connect a printer.")
-                return@launch
-            }
-            _uiState.value.sharedImageUri?.let { uri ->
-                try {
-                    val inputStream = context.contentResolver.openInputStream(uri)
-                    val bitmap = BitmapFactory.decodeStream(inputStream)
-                    inputStream?.close()
-                    val printables = ArrayList<Printable>().apply {
-                        add(ImagePrintable.Builder(bitmap).build())
-                    }
-                    printing?.print(printables)
-                } catch (e: Exception) {
-                    updateConnectionStatus("Error printing image: ${e.message}")
-                }
-            } ?: run {
-                updateConnectionStatus("No image to print")
-            }
-        }
-    }
 
     fun enableBluetooth(context: MainActivity) {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH) != PackageManager.PERMISSION_GRANTED) {
@@ -206,6 +247,22 @@ class PrinterViewModel : ViewModel() {
 
     fun onPrinterScanned(context: MainActivity) {
         updateConnectionStatus("Printer paired successfully")
+        loadPairedDevices(context)
+    }
+
+
+    // Update handleIntent to accept sharing from any app
+    fun handleIntent(intent: Intent?) {
+        if (intent?.action == Intent.ACTION_SEND) {
+            val uri = intent.getParcelableExtra<android.net.Uri>(Intent.EXTRA_STREAM)
+            if (uri != null) {
+                _uiState.value = _uiState.value.copy(sharedImageUri = uri)
+            }
+        }
+    }
+
+
+    fun refreshDevices(context: MainActivity) {
         loadPairedDevices(context)
     }
 
