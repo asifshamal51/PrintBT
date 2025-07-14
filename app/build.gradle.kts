@@ -40,16 +40,10 @@ android {
 }
 
 dependencies {
-    implementation("com.github.mazenrashed:Printooth:1.3.1") {
-        exclude(mapOf("group" to "com.android.support", "module" to "support-compat"))
-        exclude(mapOf("group" to "com.android.support", "module" to "support-core-utils"))
-        exclude(mapOf("group" to "com.android.support", "module" to "design"))
-        exclude(mapOf("group" to "com.android.support", "module" to "versionedparcelable"))
-        exclude(mapOf("group" to "com.android.support", "module" to "animated-vector-drawable"))
-        exclude(mapOf("group" to "com.android.support", "module" to "support-vector-drawable"))
-    }
+    implementation("com.github.DantSu:ESCPOS-ThermalPrinter-Android:3.3.0")
     implementation("io.coil-kt:coil-compose:2.7.0") // For image loading in PrinterAppUI
-    implementation ("org.jsoup:jsoup:1.17.2")
+    implementation("org.jsoup:jsoup:1.17.2")
+
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
