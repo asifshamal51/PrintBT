@@ -3,6 +3,7 @@ package com.printbt.printbt
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.os.Bundle
+import android.util.Log
 import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -67,6 +68,9 @@ fun PrintPreviewScreen(
     var textInput by remember { mutableStateOf(uiState.textToPrint) }
     var webpageUrl by remember { mutableStateOf(uiState.webpageUrl) }
 
+    LaunchedEffect(uiState.isPrinting) {
+        Log.d("PrintPreviewScreen", "isPrinting: ${uiState.isPrinting}")
+    }
     Column(
         modifier = Modifier
             .fillMaxSize()

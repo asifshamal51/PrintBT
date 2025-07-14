@@ -196,32 +196,39 @@ class PrinterViewModel : ViewModel() {
         }
     }
 
-    // Updated printContent to exclude webpage URL in text fallback
+
     fun printContent(context: Context) {
         viewModelScope.launch {
+            Log.d(TAG, "Starting printContent, isPrinting: ${_uiState.value.isPrinting}")
             if (printing == null) {
                 lastConnectedDevice?.let { device ->
                     appContext?.let { ctx ->
+                        Log.d(TAG, "No printer connected, attempting to reconnect to ${device.name}")
                         connectToPrinter(ctx, device)
                         delay(1000)
                         if (printing == null) {
                             updateConnectionStatus("No printer connected. Please connect a printer.")
+                            Log.w(TAG, "Reconnection failed, printing aborted")
                             _uiState.value = _uiState.value.copy(isPrinting = false)
                             return@launch
                         }
                     } ?: run {
                         updateConnectionStatus("No context available for reconnection")
+                        Log.w(TAG, "No context available, printing aborted")
                         _uiState.value = _uiState.value.copy(isPrinting = false)
                         return@launch
                     }
                 } ?: run {
                     updateConnectionStatus("No printer connected. Please connect a printer.")
+                    Log.w(TAG, "No last connected device, printing aborted")
                     _uiState.value = _uiState.value.copy(isPrinting = false)
                     return@launch
                 }
             }
 
             val printables = ArrayList<Printable>()
+            _uiState.value = _uiState.value.copy(isPrinting = true)
+            Log.d(TAG, "Set isPrinting to true")
 
             // Add text to printables if present
             if (_uiState.value.textToPrint.isNotBlank()) {
@@ -229,8 +236,8 @@ class PrinterViewModel : ViewModel() {
                     printables.add(
                         TextPrintable.Builder()
                             .setText(_uiState.value.textToPrint)
-                            .setAlignment(0) // 0 for left
-                            .setFontSize(1)  // 1 for normal
+                            .setAlignment(0)
+                            .setFontSize(1)
                             .build()
                     )
                     printables.add(RawPrintable.Builder("\n\n\n\n".toByteArray()).build())
@@ -239,6 +246,7 @@ class PrinterViewModel : ViewModel() {
                     updateConnectionStatus("Error preparing text: ${e.message}")
                     Log.e(TAG, "Error preparing text: ${e.message}")
                     _uiState.value = _uiState.value.copy(isPrinting = false)
+                    Log.d(TAG, "Set isPrinting to false due to text error")
                     return@launch
                 }
             }
@@ -246,18 +254,25 @@ class PrinterViewModel : ViewModel() {
             // Add image to printables if present
             _uiState.value.sharedImageUri?.let { uri ->
                 try {
-                    _uiState.value = _uiState.value.copy(isPrinting = true)
                     val inputStream = context.contentResolver.openInputStream(uri)
                     val originalBitmap = BitmapFactory.decodeStream(inputStream)
                     inputStream?.close()
+                    if (originalBitmap == null) {
+                        updateConnectionStatus("Failed to decode image")
+                        Log.e(TAG, "Failed to decode image from URI: $uri")
+                        _uiState.value = _uiState.value.copy(isPrinting = false)
+                        Log.d(TAG, "Set isPrinting to false due to image decode failure")
+                        return@launch
+                    }
                     val resizedBitmap = resizeBitmap(originalBitmap, _uiState.value.selectedPrintSize.widthPx)
                     printables.add(ImagePrintable.Builder(resizedBitmap).build())
                     printables.add(RawPrintable.Builder("\n\n\n\n".toByteArray()).build())
-                    Log.i(TAG, "Added image to printables")
+                    Log.i(TAG, "Added image to printables, dimensions: ${resizedBitmap.width}x${resizedBitmap.height}")
                 } catch (e: Exception) {
                     updateConnectionStatus("Error printing image: ${e.message}")
                     Log.e(TAG, "Error printing image: ${e.message}")
                     _uiState.value = _uiState.value.copy(isPrinting = false)
+                    Log.d(TAG, "Set isPrinting to false due to image error")
                     return@launch
                 }
             }
@@ -265,16 +280,14 @@ class PrinterViewModel : ViewModel() {
             // Add webpage content (as bitmap or text fallback)
             if (_uiState.value.webpageUrl.isNotBlank()) {
                 try {
-                    _uiState.value = _uiState.value.copy(isPrinting = true)
                     printWebpageAsBitmap(context, _uiState.value.webpageUrl) { bitmap ->
                         viewModelScope.launch {
                             if (bitmap != null) {
                                 val resizedBitmap = resizeBitmap(bitmap, _uiState.value.selectedPrintSize.widthPx)
                                 printables.add(ImagePrintable.Builder(resizedBitmap).build())
                                 printables.add(RawPrintable.Builder("\n\n\n\n".toByteArray()).build())
-                                Log.i(TAG, "Added webpage bitmap to printables")
+                                Log.i(TAG, "Added webpage bitmap to printables, dimensions: ${resizedBitmap.width}x${resizedBitmap.height}")
                             } else {
-                                // Fallback to text printing without URL
                                 Log.w(TAG, "Webpage bitmap failed, falling back to text")
                                 val webpageText = fetchWebpageText(_uiState.value.webpageUrl)
                                 if (webpageText.startsWith("Error")) {
@@ -283,13 +296,13 @@ class PrinterViewModel : ViewModel() {
                                 } else {
                                     printables.add(
                                         TextPrintable.Builder()
-                                            .setText(webpageText) // Removed URL prefix
+                                            .setText(webpageText)
                                             .setAlignment(0)
                                             .setFontSize(1)
                                             .build()
                                     )
                                     printables.add(RawPrintable.Builder("\n\n\n\n".toByteArray()).build())
-                                    Log.i(TAG, "Added webpage text to printables")
+                                    Log.i(TAG, "Added webpage text chances of being true are extremely slim to printables")
                                 }
                             }
 
@@ -301,13 +314,13 @@ class PrinterViewModel : ViewModel() {
                             }
 
                             try {
+                                Log.d(TAG, "Sending print job with ${printables.size} items")
                                 printing?.print(printables)
-                                Log.i(TAG, "Sent print job with ${printables.size} items")
                             } catch (e: Exception) {
                                 updateConnectionStatus("Error printing: ${e.message}")
                                 Log.e(TAG, "Error printing: ${e.message}")
-                            } finally {
                                 _uiState.value = _uiState.value.copy(isPrinting = false)
+                                Log.d(TAG, "Set isPrinting to false due to print error")
                             }
                         }
                     }
@@ -315,6 +328,7 @@ class PrinterViewModel : ViewModel() {
                     updateConnectionStatus("Error processing webpage: ${e.message}")
                     Log.e(TAG, "Error processing webpage: ${e.message}")
                     _uiState.value = _uiState.value.copy(isPrinting = false)
+                    Log.d(TAG, "Set isPrinting to false due to webpage error")
                     return@launch
                 }
             } else {
@@ -326,17 +340,159 @@ class PrinterViewModel : ViewModel() {
                     return@launch
                 }
                 try {
+                    Log.d(TAG, "Sending print job with ${printables.size} items")
                     printing?.print(printables)
-                    Log.i(TAG, "Sent print job with ${printables.size} items")
                 } catch (e: Exception) {
                     updateConnectionStatus("Error printing: ${e.message}")
                     Log.e(TAG, "Error printing: ${e.message}")
-                } finally {
                     _uiState.value = _uiState.value.copy(isPrinting = false)
+                    Log.d(TAG, "Set isPrinting to false due to print error")
                 }
             }
         }
     }
+
+//    // Updated printContent to exclude webpage URL in text fallback
+//    fun printContent(context: Context) {
+//        viewModelScope.launch {
+//            if (printing == null) {
+//                lastConnectedDevice?.let { device ->
+//                    appContext?.let { ctx ->
+//                        connectToPrinter(ctx, device)
+//                        delay(1000)
+//                        if (printing == null) {
+//                            updateConnectionStatus("No printer connected. Please connect a printer.")
+//                            _uiState.value = _uiState.value.copy(isPrinting = false)
+//                            return@launch
+//                        }
+//                    } ?: run {
+//                        updateConnectionStatus("No context available for reconnection")
+//                        _uiState.value = _uiState.value.copy(isPrinting = false)
+//                        return@launch
+//                    }
+//                } ?: run {
+//                    updateConnectionStatus("No printer connected. Please connect a printer.")
+//                    _uiState.value = _uiState.value.copy(isPrinting = false)
+//                    return@launch
+//                }
+//            }
+//
+//            val printables = ArrayList<Printable>()
+//
+//            // Add text to printables if present
+//            if (_uiState.value.textToPrint.isNotBlank()) {
+//                try {
+//                    printables.add(
+//                        TextPrintable.Builder()
+//                            .setText(_uiState.value.textToPrint)
+//                            .setAlignment(0) // 0 for left
+//                            .setFontSize(1)  // 1 for normal
+//                            .build()
+//                    )
+//                    printables.add(RawPrintable.Builder("\n\n\n\n".toByteArray()).build())
+//                    Log.i(TAG, "Added text to printables: ${_uiState.value.textToPrint}")
+//                } catch (e: Exception) {
+//                    updateConnectionStatus("Error preparing text: ${e.message}")
+//                    Log.e(TAG, "Error preparing text: ${e.message}")
+//                    _uiState.value = _uiState.value.copy(isPrinting = false)
+//                    return@launch
+//                }
+//            }
+//
+//            // Add image to printables if present
+//            _uiState.value.sharedImageUri?.let { uri ->
+//                try {
+//                    _uiState.value = _uiState.value.copy(isPrinting = true)
+//                    val inputStream = context.contentResolver.openInputStream(uri)
+//                    val originalBitmap = BitmapFactory.decodeStream(inputStream)
+//                    inputStream?.close()
+//                    val resizedBitmap = resizeBitmap(originalBitmap, _uiState.value.selectedPrintSize.widthPx)
+//                    printables.add(ImagePrintable.Builder(resizedBitmap).build())
+//                    printables.add(RawPrintable.Builder("\n\n\n\n".toByteArray()).build())
+//                    Log.i(TAG, "Added image to printables")
+//                } catch (e: Exception) {
+//                    updateConnectionStatus("Error printing image: ${e.message}")
+//                    Log.e(TAG, "Error printing image: ${e.message}")
+//                    _uiState.value = _uiState.value.copy(isPrinting = false)
+//                    return@launch
+//                }
+//            }
+//
+//            // Add webpage content (as bitmap or text fallback)
+//            if (_uiState.value.webpageUrl.isNotBlank()) {
+//                try {
+//                    _uiState.value = _uiState.value.copy(isPrinting = true)
+//                    printWebpageAsBitmap(context, _uiState.value.webpageUrl) { bitmap ->
+//                        viewModelScope.launch {
+//                            if (bitmap != null) {
+//                                val resizedBitmap = resizeBitmap(bitmap, _uiState.value.selectedPrintSize.widthPx)
+//                                printables.add(ImagePrintable.Builder(resizedBitmap).build())
+//                                printables.add(RawPrintable.Builder("\n\n\n\n".toByteArray()).build())
+//                                Log.i(TAG, "Added webpage bitmap to printables")
+//                            } else {
+//                                // Fallback to text printing without URL
+//                                Log.w(TAG, "Webpage bitmap failed, falling back to text")
+//                                val webpageText = fetchWebpageText(_uiState.value.webpageUrl)
+//                                if (webpageText.startsWith("Error")) {
+//                                    updateConnectionStatus(webpageText)
+//                                    Log.e(TAG, "Failed to fetch webpage text")
+//                                } else {
+//                                    printables.add(
+//                                        TextPrintable.Builder()
+//                                            .setText(webpageText) // Removed URL prefix
+//                                            .setAlignment(0)
+//                                            .setFontSize(1)
+//                                            .build()
+//                                    )
+//                                    printables.add(RawPrintable.Builder("\n\n\n\n".toByteArray()).build())
+//                                    Log.i(TAG, "Added webpage text to printables")
+//                                }
+//                            }
+//
+//                            if (printables.isEmpty()) {
+//                                _uiState.value = _uiState.value.copy(isPrinting = false)
+//                                updateConnectionStatus("Nothing to print")
+//                                Log.w(TAG, "No content (text, image, or webpage) to print")
+//                                return@launch
+//                            }
+//
+//                            try {
+//                                printing?.print(printables)
+//                                Log.i(TAG, "Sent print job with ${printables.size} items")
+//                            } catch (e: Exception) {
+//                                updateConnectionStatus("Error printing: ${e.message}")
+//                                Log.e(TAG, "Error printing: ${e.message}")
+//                            } finally {
+//                                _uiState.value = _uiState.value.copy(isPrinting = false)
+//                            }
+//                        }
+//                    }
+//                } catch (e: Exception) {
+//                    updateConnectionStatus("Error processing webpage: ${e.message}")
+//                    Log.e(TAG, "Error processing webpage: ${e.message}")
+//                    _uiState.value = _uiState.value.copy(isPrinting = false)
+//                    return@launch
+//                }
+//            } else {
+//                // Print text, image, or both if no webpage
+//                if (printables.isEmpty()) {
+//                    _uiState.value = _uiState.value.copy(isPrinting = false)
+//                    updateConnectionStatus("Nothing to print")
+//                    Log.w(TAG, "No content (text or image) to print")
+//                    return@launch
+//                }
+//                try {
+//                    printing?.print(printables)
+//                    Log.i(TAG, "Sent print job with ${printables.size} items")
+//                } catch (e: Exception) {
+//                    updateConnectionStatus("Error printing: ${e.message}")
+//                    Log.e(TAG, "Error printing: ${e.message}")
+//                } finally {
+//                    _uiState.value = _uiState.value.copy(isPrinting = false)
+//                }
+//            }
+//        }
+//    }
 
 
     // PrinterViewModel.kt
@@ -365,9 +521,9 @@ class PrinterViewModel : ViewModel() {
     }
 
     private fun resizeBitmap(bitmap: Bitmap, targetWidth: Int): Bitmap {
-        if (bitmap.width <= targetWidth) return bitmap
         val aspectRatio = bitmap.height.toFloat() / bitmap.width
         val targetHeight = (targetWidth * aspectRatio).toInt()
+        Log.d(TAG, "Resizing bitmap: original=${bitmap.width}x${bitmap.height}, target=${targetWidth}x$targetHeight")
         return Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true)
     }
 
