@@ -1,4 +1,3 @@
-// PrinterViewModel.kt
 package com.printbt.printbt
 
 import android.Manifest
@@ -11,6 +10,7 @@ import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.util.Log // Import Log class
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import androidx.lifecycle.ViewModel
@@ -32,12 +32,14 @@ class PrinterViewModel : ViewModel() {
 
     private var printing: Printing? = null
     private lateinit var sharedPreferences: SharedPreferences
-    private var lastConnectedDevice: BluetoothDevice? = null // Store last connected device
-    private var appContext: Context? = null // Store context for reconnection
+    private var lastConnectedDevice: BluetoothDevice? = null
+    private var appContext: Context? = null
+
+    private val TAG = "PrinterViewModel" // Tag for Logcat
 
     @SuppressLint("MissingPermission")
     fun setContext(context: Context) {
-        appContext = context.applicationContext // Store application context
+        appContext = context.applicationContext
         Printooth.init(context)
         sharedPreferences = context.getSharedPreferences("PrinterPrefs", Context.MODE_PRIVATE)
         loadPrintSize()
@@ -59,9 +61,13 @@ class PrinterViewModel : ViewModel() {
                     connectionStatus = "Connected to ${pairedPrinter?.name ?: "Unknown Device"}",
                     connectedDevice = device
                 )
+                Log.i(TAG, "Initialized with paired printer: ${pairedPrinter?.name ?: "Unknown Device"}")
+            } else {
+                Log.i(TAG, "No paired printer found on initialization")
             }
         } catch (e: SecurityException) {
             updateConnectionStatus("Bluetooth permission error: ${e.message}")
+            Log.e(TAG, "Bluetooth permission error during initialization: ${e.message}")
         }
     }
 
@@ -76,15 +82,13 @@ class PrinterViewModel : ViewModel() {
         _uiState.value = _uiState.value.copy(selectedPrintSize = printSize)
     }
 
-    // PrinterViewModel.kt
     fun printImage(context: Context) {
         viewModelScope.launch {
             if (printing == null) {
-                // Attempt to reconnect if a device was previously connected
                 lastConnectedDevice?.let { device ->
                     appContext?.let { ctx ->
                         connectToPrinter(ctx, device)
-                        delay(1000) // Wait for reconnection
+                        delay(1000)
                         if (printing == null) {
                             updateConnectionStatus("No printer connected. Please connect a printer.")
                             return@launch
@@ -107,61 +111,21 @@ class PrinterViewModel : ViewModel() {
                     val resizedBitmap = resizeBitmap(originalBitmap, _uiState.value.selectedPrintSize.widthPx)
                     val printables = ArrayList<Printable>().apply {
                         add(ImagePrintable.Builder(resizedBitmap).build())
-                        // Add whitespace (multiple newlines) at the bottom
                         add(com.mazenrashed.printooth.data.printable.RawPrintable.Builder("\n\n\n\n".toByteArray()).build())
                     }
                     printing?.print(printables)
+//                    Log.i(TAG, "Printing image to ${device.name ?: "Unknown Device"}")
                 } catch (e: Exception) {
                     _uiState.value = _uiState.value.copy(isPrinting = false)
                     updateConnectionStatus("Error printing image: ${e.message}")
+                    Log.e(TAG, "Error printing image: ${e.message}")
                 }
             } ?: run {
                 updateConnectionStatus("No image to print")
+                Log.w(TAG, "No image URI provided for printing")
             }
         }
     }
-
-//    fun printImage(context: Context) {
-//        viewModelScope.launch {
-//            if (printing == null) {
-//                // Attempt to reconnect if a device was previously connected
-//                lastConnectedDevice?.let { device ->
-//                    appContext?.let { ctx ->
-//                        connectToPrinter(ctx, device)
-//                        delay(1000) // Wait for reconnection
-//                        if (printing == null) {
-//                            updateConnectionStatus("No printer connected. Please connect a printer.")
-//                            return@launch
-//                        }
-//                    } ?: run {
-//                        updateConnectionStatus("No context available for reconnection")
-//                        return@launch
-//                    }
-//                } ?: run {
-//                    updateConnectionStatus("No printer connected. Please connect a printer.")
-//                    return@launch
-//                }
-//            }
-//            _uiState.value.sharedImageUri?.let { uri ->
-//                try {
-//                    _uiState.value = _uiState.value.copy(isPrinting = true)
-//                    val inputStream = context.contentResolver.openInputStream(uri)
-//                    val originalBitmap = BitmapFactory.decodeStream(inputStream)
-//                    inputStream?.close()
-//                    val resizedBitmap = resizeBitmap(originalBitmap, _uiState.value.selectedPrintSize.widthPx)
-//                    val printables = ArrayList<Printable>().apply {
-//                        add(ImagePrintable.Builder(resizedBitmap).build())
-//                    }
-//                    printing?.print(printables)
-//                } catch (e: Exception) {
-//                    _uiState.value = _uiState.value.copy(isPrinting = false)
-//                    updateConnectionStatus("Error printing image: ${e.message}")
-//                }
-//            } ?: run {
-//                updateConnectionStatus("No image to print")
-//            }
-//        }
-//    }
 
     private fun resizeBitmap(bitmap: Bitmap, targetWidth: Int): Bitmap {
         if (bitmap.width <= targetWidth) return bitmap
@@ -174,11 +138,13 @@ class PrinterViewModel : ViewModel() {
     fun connectToPrinter(context: Context, device: BluetoothDevice) {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
             updateConnectionStatus("Bluetooth permission denied")
+            Log.e(TAG, "Bluetooth permission denied when connecting to ${device.name}")
             return
         }
         try {
             if (printing != null && _uiState.value.connectedDevice == device) {
                 updateConnectionStatus("Already connected to ${device.name}")
+                Log.i(TAG, "Already connected to printer: ${device.name}")
                 return
             }
             Printooth.setPrinter(device.name, device.address)
@@ -187,10 +153,15 @@ class PrinterViewModel : ViewModel() {
             lastConnectedDevice = device
             _uiState.value = _uiState.value.copy(
                 connectionStatus = "Connected to ${device.name}",
-                connectedDevice = device
+                connectedDevice = device,
+                showSnackbar = true,
+                snackbarMessage = "Connected to ${device.name}",
+                isConnectionSuccess = true
             )
+            Log.i(TAG, "Successfully connected to printer: ${device.name}, address: ${device.address}")
         } catch (e: SecurityException) {
             updateConnectionStatus("Bluetooth permission error: ${e.message}")
+            Log.e(TAG, "Bluetooth permission error when connecting to ${device.name}: ${e.message}")
         }
     }
 
@@ -202,10 +173,15 @@ class PrinterViewModel : ViewModel() {
             _uiState.value = _uiState.value.copy(
                 connectionStatus = "Printer disconnected",
                 connectedDevice = null,
-                isPrinting = false
+                isPrinting = false,
+                showSnackbar = true,
+                snackbarMessage = "Printer disconnected",
+                isConnectionSuccess = false
             )
+            Log.i(TAG, "Printer disconnected successfully")
         } ?: run {
             updateConnectionStatus("No printer connected")
+            Log.w(TAG, "Disconnect attempted but no printer was connected")
         }
     }
 
@@ -213,55 +189,75 @@ class PrinterViewModel : ViewModel() {
         printing?.printingCallback = object : PrintingCallback {
             override fun connectingWithPrinter() {
                 updateConnectionStatus("Connecting to printer...")
+                Log.d(TAG, "Connecting to printer...")
             }
 
             override fun connectionFailed(error: String) {
                 _uiState.value = _uiState.value.copy(
                     connectionStatus = "Connection failed: $error",
                     connectedDevice = null,
-                    isPrinting = false
+                    isPrinting = false,
+                    showSnackbar = true,
+                    snackbarMessage = "Connection failed: $error",
+                    isConnectionSuccess = false
                 )
                 printing = null
+                Log.e(TAG, "Printer connection failed: $error")
             }
 
             override fun disconnected() {
                 _uiState.value = _uiState.value.copy(
                     connectionStatus = "Printer disconnected",
-                    isPrinting = false
+                    isPrinting = false,
+                    showSnackbar = true,
+                    snackbarMessage = "Printer disconnected",
+                    isConnectionSuccess = false
                 )
+                Log.i(TAG, "Printer disconnected")
                 // Attempt to reconnect
                 lastConnectedDevice?.let { device ->
                     appContext?.let { ctx ->
                         viewModelScope.launch {
+                            Log.d(TAG, "Attempting to reconnect to ${device.name}")
                             connectToPrinter(ctx, device)
                         }
                     } ?: run {
                         _uiState.value = _uiState.value.copy(connectedDevice = null)
                         printing = null
+                        Log.w(TAG, "No context available for reconnection")
                     }
                 } ?: run {
                     _uiState.value = _uiState.value.copy(connectedDevice = null)
                     printing = null
+                    Log.w(TAG, "No last connected device for reconnection")
                 }
             }
 
             override fun onError(error: String) {
                 _uiState.value = _uiState.value.copy(
                     connectionStatus = "Error: $error",
-                    isPrinting = false
+                    isPrinting = false,
+                    showSnackbar = true,
+                    snackbarMessage = "Error: $error",
+                    isConnectionSuccess = false
                 )
+                Log.e(TAG, "Printer error: $error")
             }
 
             override fun onMessage(message: String) {
                 updateConnectionStatus(message)
+                Log.d(TAG, "Printer message: $message")
             }
 
             override fun printingOrderSentSuccessfully() {
                 _uiState.value = _uiState.value.copy(
                     connectionStatus = "Print successful",
-                    isPrinting = false
+                    isPrinting = false,
+                    showSnackbar = true,
+                    snackbarMessage = "Print successful",
+                    isConnectionSuccess = true
                 )
-                // Do not clear printing or connectedDevice to maintain connection
+                Log.i(TAG, "Print order sent successfully")
             }
         }
     }
@@ -282,6 +278,7 @@ class PrinterViewModel : ViewModel() {
         } else {
             if (context is MainActivity) {
                 context.requestBluetoothPermission.launch(permissions)
+                Log.d(TAG, "Requesting Bluetooth permissions")
             }
         }
     }
@@ -290,23 +287,28 @@ class PrinterViewModel : ViewModel() {
     fun checkBluetoothAndLoadDevices(context: Context) {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
             updateConnectionStatus("Bluetooth permission denied")
+            Log.e(TAG, "Bluetooth permission denied when checking Bluetooth")
             return
         }
         try {
             val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
             if (bluetoothAdapter == null) {
                 updateConnectionStatus("No Bluetooth adapter available")
+                Log.e(TAG, "No Bluetooth adapter available")
                 return
             }
             val isEnabled = bluetoothAdapter.isEnabled
             _uiState.value = _uiState.value.copy(isBluetoothEnabled = isEnabled)
             if (isEnabled) {
                 loadPairedDevices(context)
+                Log.d(TAG, "Bluetooth is enabled, loading paired devices")
             } else {
                 updateConnectionStatus("Bluetooth is off")
+                Log.w(TAG, "Bluetooth is disabled")
             }
         } catch (e: SecurityException) {
             updateConnectionStatus("Bluetooth permission error: ${e.message}")
+            Log.e(TAG, "Bluetooth permission error: ${e.message}")
         }
     }
 
@@ -314,6 +316,7 @@ class PrinterViewModel : ViewModel() {
     private fun loadPairedDevices(context: Context) {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
             updateConnectionStatus("Bluetooth permission denied")
+            Log.e(TAG, "Bluetooth permission denied when loading paired devices")
             return
         }
         try {
@@ -322,21 +325,28 @@ class PrinterViewModel : ViewModel() {
             _uiState.value = _uiState.value.copy(pairedDevices = devices)
             if (devices.isEmpty()) {
                 updateConnectionStatus("No paired printers found")
+                Log.w(TAG, "No paired printers found")
+            } else {
+                Log.i(TAG, "Found ${devices.size} paired devices: ${devices.joinToString { it.name ?: "Unknown" }}")
             }
         } catch (e: SecurityException) {
             updateConnectionStatus("Bluetooth permission error: ${e.message}")
+            Log.e(TAG, "Bluetooth permission error when loading devices: ${e.message}")
         }
     }
 
     fun enableBluetooth(context: MainActivity) {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH) != PackageManager.PERMISSION_GRANTED) {
             updateConnectionStatus("Bluetooth permission denied")
+            Log.e(TAG, "Bluetooth permission denied when enabling Bluetooth")
             return
         }
         try {
             context.enableBluetooth.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
+            Log.d(TAG, "Launching Bluetooth enable intent")
         } catch (e: SecurityException) {
             updateConnectionStatus("Bluetooth permission error: ${e.message}")
+            Log.e(TAG, "Bluetooth permission error: ${e.message}")
         }
     }
 
@@ -345,23 +355,28 @@ class PrinterViewModel : ViewModel() {
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
         ) {
             updateConnectionStatus("Bluetooth scan or location permission denied")
+            Log.e(TAG, "Bluetooth scan or location permission denied")
             return
         }
         try {
             context.scanPrinter.launch(Intent(context, ScanningActivity::class.java))
+            Log.d(TAG, "Launching printer scan activity")
         } catch (e: SecurityException) {
             updateConnectionStatus("Permission error: ${e.message}")
+            Log.e(TAG, "Permission error when scanning for printers: ${e.message}")
         }
     }
 
     fun onBluetoothEnabled(context: MainActivity) {
         _uiState.value = _uiState.value.copy(isBluetoothEnabled = true)
         loadPairedDevices(context)
+        Log.i(TAG, "Bluetooth enabled successfully")
     }
 
     fun onPrinterScanned(context: MainActivity) {
         updateConnectionStatus("Printer paired successfully")
         loadPairedDevices(context)
+        Log.i(TAG, "Printer paired successfully")
     }
 
     fun handleIntent(intent: Intent?) {
@@ -369,16 +384,31 @@ class PrinterViewModel : ViewModel() {
             val uri = intent.getParcelableExtra<android.net.Uri>(Intent.EXTRA_STREAM)
             if (uri != null) {
                 _uiState.value = _uiState.value.copy(sharedImageUri = uri)
+                Log.i(TAG, "Received shared image URI: $uri")
+            } else {
+                Log.w(TAG, "Received ACTION_SEND intent but no URI found")
             }
         }
     }
 
     fun refreshDevices(context: Context) {
         loadPairedDevices(context)
+        Log.d(TAG, "Refreshing paired devices")
     }
 
     internal fun updateConnectionStatus(status: String) {
-        _uiState.value = _uiState.value.copy(connectionStatus = status)
+        val isSuccess = status.contains("Connected to") || status == "Print successful"
+        _uiState.value = _uiState.value.copy(
+            connectionStatus = status,
+            showSnackbar = true,
+            snackbarMessage = status,
+            isConnectionSuccess = isSuccess
+        )
+        Log.d(TAG, "Connection status updated: $status")
+    }
+
+    fun dismissSnackbar() {
+        _uiState.value = _uiState.value.copy(showSnackbar = false)
+        Log.d(TAG, "Snackbar dismissed")
     }
 }
-

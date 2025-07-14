@@ -17,9 +17,8 @@ import com.mazenrashed.printooth.Printooth
 import com.mazenrashed.printooth.ui.ScanningActivity
 
 
-// MainActivity.kt
 class MainActivity : ComponentActivity() {
-    private val viewModel: PrinterViewModel by viewModels()
+    internal val viewModel: PrinterViewModel by viewModels()
 
     internal val requestBluetoothPermission =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
@@ -69,6 +68,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        // No ACTION_SEND handling needed here
+        viewModel.handleIntent(intent)
     }
 }

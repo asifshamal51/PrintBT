@@ -1,5 +1,6 @@
 package com.printbt.printbt
 
+import android.annotation.SuppressLint
 import android.bluetooth.BluetoothDevice
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
@@ -9,7 +10,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -17,8 +20,9 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 
-// PrinterAppUI.kt
+@SuppressLint("ContextCastToActivity")
 @Composable
 fun PrinterAppUI(
     uiState: PrinterUiState,
@@ -27,126 +31,163 @@ fun PrinterAppUI(
     onRefreshClick: () -> Unit,
     onDisconnectClick: () -> Unit
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = "Bluetooth Printer App",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
+    // Create a SnackbarHostState to control the Snackbar
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
-        // Show connected printer
-        uiState.connectedDevice?.let { device ->
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-            ) {
-                Row(
+    // Observe changes to showSnackbar and display the Snackbar
+    LaunchedEffect(uiState.showSnackbar, uiState.snackbarMessage) {
+        if (uiState.showSnackbar) {
+            scope.launch {
+                snackbarHostState.showSnackbar(
+                    message = uiState.snackbarMessage,
+                    duration = SnackbarDuration.Short
+                )
+                // Dismiss the Snackbar in ViewModel after it is shown
+                (context as? MainActivity)?.viewModel?.dismissSnackbar()
+            }
+        }
+    }
+
+    Scaffold(
+        snackbarHost = {
+            SnackbarHost(
+                hostState = snackbarHostState,
+                snackbar = { data ->
+                    Snackbar(
+                        modifier = Modifier.padding(16.dp),
+                        containerColor = if (uiState.isConnectionSuccess) Color.Green else Color.Red,
+                        contentColor = Color.White
+                    ) {
+                        Text(data.visuals.message)
+                    }
+                }
+            )
+        }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "Bluetooth Printer App",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+
+            // Show connected printer
+            uiState.connectedDevice?.let { device ->
+                Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(bottom = 16.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                 ) {
-                    Text(
-                        text = "Connected: ${device.name ?: "Unknown Device"}",
-                        style = MaterialTheme.typography.bodyLarge
-                    )
-                    Button(
-                        onClick = onDisconnectClick,
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Disconnect")
+                        Text(
+                            text = "Connected: ${device.name ?: "Unknown Device"}",
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                        Button(
+                            onClick = onDisconnectClick,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                        ) {
+                            Text("Disconnect")
+                        }
                     }
                 }
             }
-        }
 
-        // Bluetooth status
-        Text(
-            text = uiState.connectionStatus,
-            color = if (uiState.connectionStatus.contains("Error") ||
-                uiState.connectionStatus.contains("failed") ||
-                uiState.connectionStatus.contains("denied")) Color.Red else Color.Green,
-            modifier = Modifier
-                .padding(8.dp)
-                .fillMaxWidth()
-                .background(Color(0xFFE0E0E0))
-                .padding(16.dp)
-        )
+            // Bluetooth status
+            Text(
+                text = uiState.connectionStatus,
+                color = if (uiState.connectionStatus.contains("Error") ||
+                    uiState.connectionStatus.contains("failed") ||
+                    uiState.connectionStatus.contains("denied")) Color.Red else Color.Green,
+                modifier = Modifier
+                    .padding(8.dp)
+                    .fillMaxWidth()
+                    .background(Color(0xFFE0E0E0))
+                    .padding(16.dp)
+            )
 
-        // Show Enable Bluetooth button only if Bluetooth is disabled
-        if (!uiState.isBluetoothEnabled) {
+            // Show Enable Bluetooth button only if Bluetooth is disabled
+            if (!uiState.isBluetoothEnabled) {
+                Button(
+                    onClick = onEnableBluetoothClick,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp)
+                ) {
+                    Text("Enable Bluetooth")
+                }
+            }
+
+            // Refresh button
             Button(
-                onClick = onEnableBluetoothClick,
+                onClick = onRefreshClick,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 8.dp)
             ) {
-                Text("Enable Bluetooth")
+                Text("Refresh")
             }
-        }
 
-        // Refresh button
-        Button(
-            onClick = onRefreshClick,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 8.dp)
-        ) {
-            Text("Refresh")
-        }
-
-        // List of paired devices
-        Text(
-            text = "Paired Printers",
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
-        )
-        if (uiState.pairedDevices.isEmpty()) {
+            // List of paired devices
             Text(
-                text = "No paired printers found",
-                color = Color.Gray,
-                modifier = Modifier.padding(8.dp)
+                text = "Paired Printers",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
             )
-        } else {
-            LazyColumn {
-                items(uiState.pairedDevices) { device ->
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-                    ) {
-                        Row(
+            if (uiState.pairedDevices.isEmpty()) {
+                Text(
+                    text = "No paired printers found",
+                    color = Color.Gray,
+                    modifier = Modifier.padding(8.dp)
+                )
+            } else {
+                LazyColumn {
+                    items(uiState.pairedDevices) { device ->
+                        Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(16.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                                .padding(vertical = 4.dp),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                         ) {
-                            Text(
-                                text = device.name ?: "Unknown Device",
-                                style = MaterialTheme.typography.bodyLarge
-                            )
-                            Button(
-                                onClick = { onConnectClick(device) },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (uiState.connectedDevice == device)
-                                        Color.Green else Color(0xFF6200EE)
-                                ),
-                                enabled = uiState.connectedDevice != device
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    if (uiState.connectedDevice == device) "Connected" else "Connect"
+                                    text = device.name ?: "Unknown Device",
+                                    style = MaterialTheme.typography.bodyLarge
                                 )
+                                Button(
+                                    onClick = { onConnectClick(device) },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (uiState.connectedDevice == device)
+                                            Color.Green else Color(0xFF6200EE)
+                                    ),
+                                    enabled = uiState.connectedDevice != device
+                                ) {
+                                    Text(
+                                        if (uiState.connectedDevice == device) "Connected" else "Connect"
+                                    )
+                                }
                             }
                         }
                     }

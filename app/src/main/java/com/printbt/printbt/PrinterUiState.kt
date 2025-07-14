@@ -10,7 +10,10 @@ data class PrinterUiState(
     val sharedImageUri: Uri? = null,
     val connectedDevice: BluetoothDevice? = null,
     val selectedPrintSize: PrintSize = PrintSize.RECEIPT_80MM,
-    val isPrinting: Boolean = false
+    val isPrinting: Boolean = false,
+    val showSnackbar: Boolean = false, // New property for Snackbar visibility
+    val snackbarMessage: String = "", // New property for Snackbar message
+    val isConnectionSuccess: Boolean = false // New property to determine Snackbar color
 )
 
 enum class PrintSize(val widthPx: Int, val label: String) {
