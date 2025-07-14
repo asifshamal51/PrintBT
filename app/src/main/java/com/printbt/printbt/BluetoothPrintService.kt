@@ -1,6 +1,7 @@
 package com.printbt.printbt
 
 import android.bluetooth.BluetoothDevice
+import android.os.Build
 import android.print.PrintAttributes
 import android.print.PrinterCapabilitiesInfo
 import android.print.PrinterId
@@ -9,16 +10,25 @@ import android.printservice.PrintJob
 import android.printservice.PrintService
 import android.printservice.PrinterDiscoverySession
 import android.util.Log
+import androidx.annotation.RequiresApi
 
 class BluetoothPrintService : PrintService() {
     private val TAG = "BluetoothPrintService"
     internal var selectedPrinter: BluetoothDevice? = null
     private var currentSession: PrinterDiscoverySession? = null
 
+    @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate() {
         super.onCreate()
         (application as? PrintBTApplication)?.setPrintService(this)
         Log.d(TAG, "BluetoothPrintService created")
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    override fun onDestroy() {
+        super.onDestroy()
+        (application as? PrintBTApplication)?.setPrintService(null)
+        Log.d(TAG, "BluetoothPrintService destroyed")
     }
 
     fun setSelectedPrinter(device: BluetoothDevice?) {

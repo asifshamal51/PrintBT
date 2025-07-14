@@ -96,16 +96,10 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         viewModel.checkPermissionsAndBluetooth(this)
-        // Re-check printer connection
-        val printService = (application as? PrintBTApplication)?.getPrintService()
-        val selectedPrinter = printService?.selectedPrinter
-        if (selectedPrinter != null && viewModel.getLastConnectedDevice()?.address != selectedPrinter.address) {
-            viewModel.connectToPrinter(this, selectedPrinter)
-            Log.d("MainActivity", "Restored printer from service: ${selectedPrinter.name}")
-        } else if (viewModel.getLastConnectedDevice() != null) {
-            viewModel.getLastConnectedDevice()?.let { device ->
+        viewModel.getLastConnectedDevice()?.let { device ->
+            if (viewModel.uiState.value.connectedDevice == null) {
                 viewModel.connectToPrinter(this, device)
-                Log.d("MainActivity", "Restored printer from ViewModel: ${device.name}")
+                Log.d("MainActivity", "Restoring connection to printer: ${device.name}")
             }
         }
     }
