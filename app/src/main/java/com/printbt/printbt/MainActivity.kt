@@ -15,7 +15,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
 import com.mazenrashed.printooth.Printooth
 import com.mazenrashed.printooth.ui.ScanningActivity
-
+// MainActivity.kt
 class MainActivity : ComponentActivity() {
     private val viewModel: PrinterViewModel by viewModels()
 
@@ -47,8 +47,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         viewModel.setContext(this)
-        viewModel.handleIntent(intent)
         viewModel.checkPermissionsAndBluetooth(this)
+
+        // Check if intent contains a shared image
+        if (intent?.action == Intent.ACTION_SEND) {
+            startActivity(Intent(this, PrintPreviewActivity::class.java).apply {
+                action = intent.action
+                putExtra(Intent.EXTRA_STREAM, intent.getParcelableExtra<android.net.Uri>(Intent.EXTRA_STREAM))
+            })
+        }
 
         setContent {
             MaterialTheme {
@@ -57,11 +64,9 @@ class MainActivity : ComponentActivity() {
                     PrinterAppUI(
                         uiState = uiState.value,
                         onConnectClick = { device -> viewModel.connectToPrinter(this, device) },
-                        onPrintClick = { viewModel.printImage(this) },
                         onEnableBluetoothClick = { viewModel.enableBluetooth(this) },
-                        onRefreshClick = { viewModel.refreshDevices(this)},
-                        onDisconnectClick = { viewModel.disconnectPrinter() } // Add disconnect callback
-
+                        onRefreshClick = { viewModel.refreshDevices(this) },
+                        onDisconnectClick = { viewModel.disconnectPrinter() }
                     )
                 }
             }
@@ -70,6 +75,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        viewModel.handleIntent(intent)
+        if (intent.action == Intent.ACTION_SEND) {
+            startActivity(Intent(this, PrintPreviewActivity::class.java).apply {
+                action = intent.action
+                putExtra(Intent.EXTRA_STREAM, intent.getParcelableExtra<android.net.Uri>(Intent.EXTRA_STREAM))
+            })
+        }
     }
 }

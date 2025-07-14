@@ -1,5 +1,6 @@
 package com.printbt.printbt
 
+import android.bluetooth.BluetoothDevice
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -17,11 +18,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
+// PrinterAppUI.kt
 @Composable
 fun PrinterAppUI(
     uiState: PrinterUiState,
-    onConnectClick: (android.bluetooth.BluetoothDevice) -> Unit,
-    onPrintClick: () -> Unit,
+    onConnectClick: (BluetoothDevice) -> Unit,
     onEnableBluetoothClick: () -> Unit,
     onRefreshClick: () -> Unit,
     onDisconnectClick: () -> Unit
@@ -38,7 +39,6 @@ fun PrinterAppUI(
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(bottom = 16.dp)
         )
-
 
         // Show connected printer
         uiState.connectedDevice?.let { device ->
@@ -65,37 +65,6 @@ fun PrinterAppUI(
                     ) {
                         Text("Disconnect")
                     }
-                }
-            }
-        }
-
-        // Display shared image preview
-        uiState.sharedImageUri?.let { uri ->
-            val context = LocalContext.current
-            val bitmap = remember(uri) {
-                try {
-                    val inputStream = context.contentResolver.openInputStream(uri)
-                    val bmp = BitmapFactory.decodeStream(inputStream)
-                    inputStream?.close()
-                    bmp
-                } catch (e: Exception) {
-                    null
-                }
-            }
-            bitmap?.let {
-                Image(
-                    bitmap = it.asImageBitmap(),
-                    contentDescription = "Image to print",
-                    modifier = Modifier
-                        .size(200.dp)
-                        .padding(bottom = 16.dp)
-                )
-                Button(
-                    onClick = onPrintClick,
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = uiState.pairedDevices.isNotEmpty()
-                ) {
-                    Text("Print Image")
                 }
             }
         }
