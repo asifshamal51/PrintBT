@@ -82,7 +82,14 @@ class PrinterViewModel : ViewModel() {
         _uiState.value = _uiState.value.copy(selectedPrintSize = printSize)
     }
 
-    fun printImage(context: Context) {
+    // New function to update text input
+    fun updateTextToPrint(text: String) {
+        _uiState.value = _uiState.value.copy(textToPrint = text)
+        Log.d(TAG, "Text to print updated: $text")
+    }
+
+    // PrinterViewModel.kt
+    fun printContent(context: Context) {
         viewModelScope.launch {
             if (printing == null) {
                 lastConnectedDevice?.let { device ->
@@ -102,6 +109,31 @@ class PrinterViewModel : ViewModel() {
                     return@launch
                 }
             }
+
+            val printables = ArrayList<Printable>()
+
+            // Add text to printables if present
+            if (_uiState.value.textToPrint.isNotBlank()) {
+                try {
+                    printables.add(
+                        com.mazenrashed.printooth.data.printable.TextPrintable.Builder()
+                            .setText(_uiState.value.textToPrint)
+                            .setAlignment(0) // 0 for left, 1 for center, 2 for right
+                            .setFontSize(1)  // 1 for normal, 0 for small, 2 for large
+                            .build()
+                    )
+                    printables.add(
+                        com.mazenrashed.printooth.data.printable.RawPrintable.Builder("\n\n\n\n".toByteArray()).build() // Updated to four newlines
+                    )
+                    Log.i(TAG, "Added text to printables: ${_uiState.value.textToPrint}")
+                } catch (e: Exception) {
+                    updateConnectionStatus("Error preparing text: ${e.message}")
+                    Log.e(TAG, "Error preparing text: ${e.message}")
+                    return@launch
+                }
+            }
+
+            // Add image to printables if present
             _uiState.value.sharedImageUri?.let { uri ->
                 try {
                     _uiState.value = _uiState.value.copy(isPrinting = true)
@@ -109,20 +141,30 @@ class PrinterViewModel : ViewModel() {
                     val originalBitmap = BitmapFactory.decodeStream(inputStream)
                     inputStream?.close()
                     val resizedBitmap = resizeBitmap(originalBitmap, _uiState.value.selectedPrintSize.widthPx)
-                    val printables = ArrayList<Printable>().apply {
-                        add(ImagePrintable.Builder(resizedBitmap).build())
-                        add(com.mazenrashed.printooth.data.printable.RawPrintable.Builder("\n\n\n\n".toByteArray()).build())
-                    }
-                    printing?.print(printables)
-//                    Log.i(TAG, "Printing image to ${device.name ?: "Unknown Device"}")
+                    printables.add(ImagePrintable.Builder(resizedBitmap).build())
+                    printables.add(com.mazenrashed.printooth.data.printable.RawPrintable.Builder("\n\n\n\n".toByteArray()).build())
+                    Log.i(TAG, "Added image to printables")
                 } catch (e: Exception) {
                     _uiState.value = _uiState.value.copy(isPrinting = false)
                     updateConnectionStatus("Error printing image: ${e.message}")
                     Log.e(TAG, "Error printing image: ${e.message}")
+                    return@launch
                 }
-            } ?: run {
-                updateConnectionStatus("No image to print")
-                Log.w(TAG, "No image URI provided for printing")
+            }
+
+            if (printables.isEmpty()) {
+                updateConnectionStatus("Nothing to print")
+                Log.w(TAG, "No content (text or image) to print")
+                return@launch
+            }
+
+            try {
+                printing?.print(printables)
+                Log.i(TAG, "Sent print job with ${printables.size} items")
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(isPrinting = false)
+                updateConnectionStatus("Error printing: ${e.message}")
+                Log.e(TAG, "Error printing: ${e.message}")
             }
         }
     }
@@ -379,17 +421,37 @@ class PrinterViewModel : ViewModel() {
         Log.i(TAG, "Printer paired successfully")
     }
 
+    // PrinterViewModel.kt
     fun handleIntent(intent: Intent?) {
-        if (intent?.action == Intent.ACTION_SEND) {
-            val uri = intent.getParcelableExtra<android.net.Uri>(Intent.EXTRA_STREAM)
-            if (uri != null) {
-                _uiState.value = _uiState.value.copy(sharedImageUri = uri)
-                Log.i(TAG, "Received shared image URI: $uri")
-            } else {
-                Log.w(TAG, "Received ACTION_SEND intent but no URI found")
+        when (intent?.action) {
+            Intent.ACTION_SEND -> {
+                // Handle image URI
+                val uri = intent.getParcelableExtra<android.net.Uri>(Intent.EXTRA_STREAM)
+                if (uri != null) {
+                    _uiState.value = _uiState.value.copy(sharedImageUri = uri)
+                    Log.i(TAG, "Received shared image URI: $uri")
+                }
+                // Handle text
+                val text = intent.getStringExtra(Intent.EXTRA_TEXT)
+                if (!text.isNullOrBlank()) {
+                    _uiState.value = _uiState.value.copy(textToPrint = text)
+                    Log.i(TAG, "Received shared text: $text")
+                }
             }
         }
     }
+
+//    fun handleIntent(intent: Intent?) {
+//        if (intent?.action == Intent.ACTION_SEND) {
+//            val uri = intent.getParcelableExtra<android.net.Uri>(Intent.EXTRA_STREAM)
+//            if (uri != null) {
+//                _uiState.value = _uiState.value.copy(sharedImageUri = uri)
+//                Log.i(TAG, "Received shared image URI: $uri")
+//            } else {
+//                Log.w(TAG, "Received ACTION_SEND intent but no URI found")
+//            }
+//        }
+//    }
 
     fun refreshDevices(context: Context) {
         loadPairedDevices(context)

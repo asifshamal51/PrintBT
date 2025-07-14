@@ -24,8 +24,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
+// PrintPreviewActivity.kt
 class PrintPreviewActivity : ComponentActivity() {
-    private val viewModel: PrinterViewModel by viewModels()
+    internal val viewModel: PrinterViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -38,7 +39,7 @@ class PrintPreviewActivity : ComponentActivity() {
                     val uiState: State<PrinterUiState> = viewModel.uiState.collectAsState()
                     PrintPreviewScreen(
                         uiState = uiState.value,
-                        onPrintClick = { viewModel.printImage(this@PrintPreviewActivity) },
+                        onPrintClick = { viewModel.printContent(this@PrintPreviewActivity) }, // Updated to printContent
                         onPrintSizeChange = { viewModel.setPrintSize(it) },
                         onBackClick = { finish() }
                     )
@@ -53,7 +54,7 @@ class PrintPreviewActivity : ComponentActivity() {
     }
 }
 
-// PrintPreviewActivity.kt
+// PrintPreviewScreen.kt
 @Composable
 fun PrintPreviewScreen(
     uiState: PrinterUiState,
@@ -61,6 +62,10 @@ fun PrintPreviewScreen(
     onPrintSizeChange: (PrintSize) -> Unit,
     onBackClick: () -> Unit
 ) {
+    val context = LocalContext.current
+    val viewModel = (context as? PrintPreviewActivity)?.viewModel
+    var textInput by remember { mutableStateOf(uiState.textToPrint) }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -79,12 +84,11 @@ fun PrintPreviewScreen(
                     modifier = Modifier.size(24.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Close ,
+                        imageVector = Icons.Default.Close,
                         contentDescription = "Close",
                         tint = MaterialTheme.colorScheme.primary
                     )
                 }
-//                Spacer(modifier = Modifier.width(8.dp))
                 Text(
                     modifier = Modifier.fillMaxWidth(),
                     text = "Print Preview",
@@ -93,6 +97,22 @@ fun PrintPreviewScreen(
                     textAlign = TextAlign.Center
                 )
             }
+        }
+
+        // Text input field
+        item {
+            OutlinedTextField(
+                value = textInput,
+                onValueChange = {
+                    textInput = it
+                    viewModel?.updateTextToPrint(it)
+                },
+                label = { Text("Enter text to print") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                maxLines = 5
+            )
         }
 
         // Print size dropdown
@@ -134,7 +154,7 @@ fun PrintPreviewScreen(
                 Button(
                     onClick = onPrintClick,
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = uiState.connectedDevice != null && uiState.sharedImageUri != null
+                    enabled = uiState.connectedDevice != null && (uiState.sharedImageUri != null || uiState.textToPrint.isNotBlank())
                 ) {
                     if (uiState.isPrinting) {
                         CircularProgressIndicator(
@@ -166,7 +186,6 @@ fun PrintPreviewScreen(
         // Image preview
         uiState.sharedImageUri?.let { uri ->
             item {
-                val context = LocalContext.current
                 val bitmap = remember(uri) {
                     try {
                         val inputStream = context.contentResolver.openInputStream(uri)
