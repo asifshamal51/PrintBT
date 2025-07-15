@@ -18,6 +18,7 @@ import com.dantsu.escposprinter.connection.bluetooth.BluetoothPrintersConnection
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class PrintBTApplication : Application() {
     private var printService: BluetoothPrintService? = null
@@ -89,19 +90,23 @@ class PrintBTApplication : Application() {
 
     fun handlePrintJob(printJob: PrintJob) {
         Log.d("PrintBTApplication", "Handling print job: ${printJob.info.label}")
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.Main) { // Switch to Main thread for PrintJob operations
             try {
                 if (printJob.isQueued) {
                     printJob.start()
                     val document = printJob.document
                     val data = document?.data // ParcelFileDescriptor
                     if (data != null) {
-                        val bitmap = convertPrintDocumentToBitmap(data)
+                        val bitmap = withContext(Dispatchers.IO) { // Perform I/O operations on IO thread
+                            convertPrintDocumentToBitmap(data)
+                        }
                         if (bitmap != null) {
                             val printerConnection = bluetoothConnection ?: BluetoothPrintersConnections.selectFirstPaired()
                             if (printerConnection != null) {
                                 val printer = EscPosPrinter(printerConnection, 203, 80f, 32)
-                                printer.printFormattedTextAndCut("[C]<img>$bitmap</img>\n")
+                                withContext(Dispatchers.IO) { // Printing is I/O-bound
+                                    printer.printFormattedTextAndCut("[C]<img>$bitmap</img>\n")
+                                }
                                 printJob.complete()
                                 Log.d("PrintBTApplication", "Print job completed successfully")
                             } else {
@@ -126,6 +131,46 @@ class PrintBTApplication : Application() {
             }
         }
     }
+
+//    fun handlePrintJob(printJob: PrintJob) {
+//        Log.d("PrintBTApplication", "Handling print job: ${printJob.info.label}")
+//        viewModelScope.launch {
+//            try {
+//                if (printJob.isQueued) {
+//                    printJob.start()
+//                    val document = printJob.document
+//                    val data = document?.data // ParcelFileDescriptor
+//                    if (data != null) {
+//                        val bitmap = convertPrintDocumentToBitmap(data)
+//                        if (bitmap != null) {
+//                            val printerConnection = bluetoothConnection ?: BluetoothPrintersConnections.selectFirstPaired()
+//                            if (printerConnection != null) {
+//                                val printer = EscPosPrinter(printerConnection, 203, 80f, 32)
+//                                printer.printFormattedTextAndCut("[C]<img>$bitmap</img>\n")
+//                                printJob.complete()
+//                                Log.d("PrintBTApplication", "Print job completed successfully")
+//                            } else {
+//                                printJob.fail("No paired printer found")
+//                                Log.w("PrintBTApplication", "No paired printer found")
+//                            }
+//                        } else {
+//                            printJob.fail("Failed to convert document to bitmap")
+//                            Log.w("PrintBTApplication", "Failed to convert document to bitmap")
+//                        }
+//                    } else {
+//                        printJob.fail("No document data available")
+//                        Log.w("PrintBTApplication", "No document data available")
+//                    }
+//                } else {
+//                    Log.w("PrintBTApplication", "Print job not in queued state: ${printJob.info.state}")
+//                    printJob.fail("Print job not queued")
+//                }
+//            } catch (e: Exception) {
+//                printJob.fail("Error processing print job: ${e.message}")
+//                Log.e("PrintBTApplication", "Error processing print job: ${e.message}", e)
+//            }
+//        }
+//    }
 
     private fun convertPrintDocumentToBitmap(data: ParcelFileDescriptor?): Bitmap? {
         if (data == null) {

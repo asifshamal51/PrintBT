@@ -43,6 +43,8 @@ dependencies {
     implementation("com.github.DantSu:ESCPOS-ThermalPrinter-Android:3.3.0")
     implementation("io.coil-kt:coil-compose:2.7.0") // For image loading in PrinterAppUI
     implementation("org.jsoup:jsoup:1.17.2")
+    implementation ("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+    implementation ("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 
 
     implementation(libs.androidx.core.ktx)

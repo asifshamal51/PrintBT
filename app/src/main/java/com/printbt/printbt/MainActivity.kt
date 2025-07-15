@@ -100,12 +100,8 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         viewModel.checkPermissionsAndBluetooth(this)
-        viewModel.getLastConnectedDevice()?.let { device ->
-            if (viewModel.uiState.value.connectedDevice == null) {
-                viewModel.connectToPrinter(this, device)
-                Log.d("MainActivity", "Restoring connection to printer: ${device.name}")
-            }
-        }
+        // Removed reconnection logic to prevent disconnect/reconnect on resume
+        Log.d("MainActivity", "Resumed, checking permissions and Bluetooth status")
     }
 }
 

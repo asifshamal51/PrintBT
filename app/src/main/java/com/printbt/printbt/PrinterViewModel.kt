@@ -51,17 +51,37 @@ class PrinterViewModel : ViewModel() {
 
     private val TAG = "PrinterViewModel"
 
+
     @SuppressLint("MissingPermission")
     fun setContext(context: Context) {
         appContext = context.applicationContext
         sharedPreferences = context.getSharedPreferences("PrinterPrefs", Context.MODE_PRIVATE)
         loadPrintSize()
         viewModelScope.launch(Dispatchers.IO) {
-            restoreLastConnectedDevice(context)
+            // Only restore connection if no printer is currently connected
+            if (printer == null && _uiState.value.connectedDevice == null) {
+                restoreLastConnectedDevice(context)
+            } else {
+                withContext(Dispatchers.Main) {
+                    Log.d(TAG, "Printer already connected, skipping restore: ${_uiState.value.connectedDevice?.name}")
+                }
+            }
+            Log.d(TAG, "Context set, checking permissions")
+            checkPermissionsAndBluetooth(context)
         }
-        Log.d(TAG, "Context set, checking permissions")
-        checkPermissionsAndBluetooth(context)
     }
+
+//    @SuppressLint("MissingPermission")
+//    fun setContext(context: Context) {
+//        appContext = context.applicationContext
+//        sharedPreferences = context.getSharedPreferences("PrinterPrefs", Context.MODE_PRIVATE)
+//        loadPrintSize()
+//        viewModelScope.launch(Dispatchers.IO) {
+//            restoreLastConnectedDevice(context)
+//        }
+//        Log.d(TAG, "Context set, checking permissions")
+//        checkPermissionsAndBluetooth(context)
+//    }
 
     private fun loadPrintSize() {
         val savedSize = sharedPreferences.getString("print_size", PrintSize.RECEIPT_80MM.name)
@@ -415,6 +435,7 @@ class PrinterViewModel : ViewModel() {
         Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true)
     }
 
+
     @SuppressLint("MissingPermission")
     fun connectToPrinter(context: Context, device: BluetoothDevice) {
         viewModelScope.launch(Dispatchers.IO) {
@@ -435,35 +456,36 @@ class PrinterViewModel : ViewModel() {
                     }
                     return@launch
                 }
-                // Close existing connection if any
-                printer?.disconnectPrinter()
-                (context.applicationContext as? PrintBTApplication)?.setBluetoothConnection(null)
-                printer = null
+                // Close existing connection if connecting to a different device
+                if (_uiState.value.connectedDevice != device) {
+                    printer?.disconnectPrinter()
+                    (context.applicationContext as? PrintBTApplication)?.setBluetoothConnection(null)
+                    printer = null
+                }
 
                 val connection = BluetoothConnection(device)
                 try {
                     connection.connect()
+                    printer = EscPosPrinter(connection, 203, 80f, 32)
+                    lastConnectedDevice = device
+                    (context.applicationContext as? PrintBTApplication)?.setBluetoothConnection(connection)
+                    sharedPreferences.edit { putString("last_connected_device", device.address) }
+                    withContext(Dispatchers.Main) {
+                        _uiState.value = _uiState.value.copy(
+                            connectionStatus = "Connected to ${device.name}",
+                            connectedDevice = device,
+                            showSnackbar = true,
+                            snackbarMessage = "Connected to ${device.name}",
+                            isConnectionSuccess = true
+                        )
+                        (context.applicationContext as? PrintBTApplication)?.getPrintService()?.setSelectedPrinter(device)
+                        Log.i(TAG, "Successfully connected to printer: ${device.name}, address: ${device.address}")
+                    }
                 } catch (e: IOException) {
                     withContext(Dispatchers.Main) {
                         updateConnectionStatus("Connection error: ${e.message}")
                         Log.e(TAG, "Connection error when connecting to ${device.name}: ${e.message}")
                     }
-                    return@launch
-                }
-                printer = EscPosPrinter(connection, 203, 80f, 32)
-                lastConnectedDevice = device
-                (context.applicationContext as? PrintBTApplication)?.setBluetoothConnection(connection)
-                sharedPreferences.edit { putString("last_connected_device", device.address) }
-                withContext(Dispatchers.Main) {
-                    _uiState.value = _uiState.value.copy(
-                        connectionStatus = "Connected to ${device.name}",
-                        connectedDevice = device,
-                        showSnackbar = true,
-                        snackbarMessage = "Connected to ${device.name}",
-                        isConnectionSuccess = true
-                    )
-                    (context.applicationContext as? PrintBTApplication)?.getPrintService()?.setSelectedPrinter(device)
-                    Log.i(TAG, "Successfully connected to printer: ${device.name}, address: ${device.address}")
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
@@ -479,6 +501,99 @@ class PrinterViewModel : ViewModel() {
             }
         }
     }
+
+    fun disconnectPrinter() {
+        viewModelScope.launch(Dispatchers.IO) {
+            printer?.let {
+                it.disconnectPrinter()
+                (appContext as? PrintBTApplication)?.setBluetoothConnection(null)
+                printer = null
+                lastConnectedDevice = null
+                sharedPreferences.edit { remove("last_connected_device") }
+                withContext(Dispatchers.Main) {
+                    _uiState.value = _uiState.value.copy(
+                        connectionStatus = "Printer disconnected",
+                        connectedDevice = null,
+                        isPrinting = false,
+                        showSnackbar = true,
+                        snackbarMessage = "Printer disconnected",
+                        isConnectionSuccess = false
+                    )
+                    (appContext as? PrintBTApplication)?.getPrintService()?.setSelectedPrinter(null)
+                    Log.i(TAG, "Printer disconnected successfully")
+                }
+            } ?: run {
+                withContext(Dispatchers.Main) {
+                    updateConnectionStatus("No printer connected")
+                    Log.w(TAG, "Disconnect attempted but no printer was connected")
+                }
+            }
+        }
+    }
+//    @SuppressLint("MissingPermission")
+//    fun connectToPrinter(context: Context, device: BluetoothDevice) {
+//        viewModelScope.launch(Dispatchers.IO) {
+//            if (ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+//                withContext(Dispatchers.Main) {
+//                    updateConnectionStatus("Bluetooth permission denied")
+//                    Log.e(TAG, "Bluetooth permission denied when connecting to ${device.name}")
+//                }
+//                return@launch
+//            }
+//            try {
+//                // Check if already connected to the same device
+//                val currentConnection = (context.applicationContext as? PrintBTApplication)?.getBluetoothConnection()
+//                if (printer != null && _uiState.value.connectedDevice == device && currentConnection?.isConnected == true) {
+//                    withContext(Dispatchers.Main) {
+//                        updateConnectionStatus("Already connected to ${device.name}")
+//                        Log.i(TAG, "Already connected to printer: ${device.name}")
+//                    }
+//                    return@launch
+//                }
+//                // Close existing connection if any
+//                printer?.disconnectPrinter()
+//                (context.applicationContext as? PrintBTApplication)?.setBluetoothConnection(null)
+//                printer = null
+//
+//                val connection = BluetoothConnection(device)
+//                try {
+//                    connection.connect()
+//                } catch (e: IOException) {
+//                    withContext(Dispatchers.Main) {
+//                        updateConnectionStatus("Connection error: ${e.message}")
+//                        Log.e(TAG, "Connection error when connecting to ${device.name}: ${e.message}")
+//                    }
+//                    return@launch
+//                }
+//                printer = EscPosPrinter(connection, 203, 80f, 32)
+//                lastConnectedDevice = device
+//                (context.applicationContext as? PrintBTApplication)?.setBluetoothConnection(connection)
+//                sharedPreferences.edit { putString("last_connected_device", device.address) }
+//                withContext(Dispatchers.Main) {
+//                    _uiState.value = _uiState.value.copy(
+//                        connectionStatus = "Connected to ${device.name}",
+//                        connectedDevice = device,
+//                        showSnackbar = true,
+//                        snackbarMessage = "Connected to ${device.name}",
+//                        isConnectionSuccess = true
+//                    )
+//                    (context.applicationContext as? PrintBTApplication)?.getPrintService()?.setSelectedPrinter(device)
+//                    Log.i(TAG, "Successfully connected to printer: ${device.name}, address: ${device.address}")
+//                }
+//            } catch (e: Exception) {
+//                withContext(Dispatchers.Main) {
+//                    updateConnectionStatus("Connection error: ${e.message}")
+//                    Log.e(TAG, "Connection error when connecting to ${device.name}: ${e.message}")
+//                    printer?.disconnectPrinter()
+//                    printer = null
+//                    lastConnectedDevice = null
+//                    (context.applicationContext as? PrintBTApplication)?.setBluetoothConnection(null)
+//                    sharedPreferences.edit { remove("last_connected_device") }
+//                    (context.applicationContext as? PrintBTApplication)?.getPrintService()?.setSelectedPrinter(null)
+//                }
+//            }
+//        }
+//    }
 
     fun addPrinter(activity: MainActivity, device: BluetoothDevice) {
         viewModelScope.launch(Dispatchers.Main) {
@@ -515,34 +630,34 @@ class PrinterViewModel : ViewModel() {
         return lastConnectedDevice
     }
 
-    fun disconnectPrinter() {
-        viewModelScope.launch(Dispatchers.IO) {
-            printer?.let {
-                it.disconnectPrinter()
-                (appContext as? PrintBTApplication)?.setBluetoothConnection(null)
-                printer = null
-                lastConnectedDevice = null
-                sharedPreferences.edit { remove("last_connected_device") }
-                withContext(Dispatchers.Main) {
-                    _uiState.value = _uiState.value.copy(
-                        connectionStatus = "Printer disconnected",
-                        connectedDevice = null,
-                        isPrinting = false,
-                        showSnackbar = true,
-                        snackbarMessage = "Printer disconnected",
-                        isConnectionSuccess = false
-                    )
-                    (appContext as? PrintBTApplication)?.getPrintService()?.setSelectedPrinter(null)
-                    Log.i(TAG, "Printer disconnected successfully")
-                }
-            } ?: run {
-                withContext(Dispatchers.Main) {
-                    updateConnectionStatus("No printer connected")
-                    Log.w(TAG, "Disconnect attempted but no printer was connected")
-                }
-            }
-        }
-    }
+//    fun disconnectPrinter() {
+//        viewModelScope.launch(Dispatchers.IO) {
+//            printer?.let {
+//                it.disconnectPrinter()
+//                (appContext as? PrintBTApplication)?.setBluetoothConnection(null)
+//                printer = null
+//                lastConnectedDevice = null
+//                sharedPreferences.edit { remove("last_connected_device") }
+//                withContext(Dispatchers.Main) {
+//                    _uiState.value = _uiState.value.copy(
+//                        connectionStatus = "Printer disconnected",
+//                        connectedDevice = null,
+//                        isPrinting = false,
+//                        showSnackbar = true,
+//                        snackbarMessage = "Printer disconnected",
+//                        isConnectionSuccess = false
+//                    )
+//                    (appContext as? PrintBTApplication)?.getPrintService()?.setSelectedPrinter(null)
+//                    Log.i(TAG, "Printer disconnected successfully")
+//                }
+//            } ?: run {
+//                withContext(Dispatchers.Main) {
+//                    updateConnectionStatus("No printer connected")
+//                    Log.w(TAG, "Disconnect attempted but no printer was connected")
+//                }
+//            }
+//        }
+//    }
 
     fun checkPermissionsAndBluetooth(context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
