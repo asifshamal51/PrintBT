@@ -26,6 +26,8 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.PrintBT">
+
+        <!-- Main Activity -->
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -38,11 +40,36 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="*/*" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.printservice.action.PRINT_SERVICE_ADD_PRINTERS" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
         </activity>
+
+        <!-- Settings Activity for Print Service -->
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="true"
+            android:label="PrintBT Settings">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.printservice.action.PRINT_SERVICE_SETTINGS" />
+            </intent-filter>
+        </activity>
+
+        <!-- Print Service -->
         <service
             android:name=".BluetoothPrintService"
             android:enabled="true"
             android:exported="true"
-            android:foregroundServiceType="connectedDevice" />
+            android:permission="android.permission.BIND_PRINT_SERVICE"
+            android:foregroundServiceType="connectedDevice">
+            <intent-filter>
+                <action android:name="android.printservice.PrintService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.printservice"
+                android:resource="@xml/print_service" />
+        </service>
     </application>
 </manifest>
